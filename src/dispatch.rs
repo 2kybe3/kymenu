@@ -154,6 +154,18 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
 
                 crate_state.handle_key(key);
             }
+            wl_keyboard::Event::Modifiers {
+                mods_depressed,
+                mods_latched,
+                mods_locked,
+                group,
+                ..
+            } => {
+                if let Some(xkb) = &mut crate_state.xkb {
+                    xkb.state
+                        .update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
+                }
+            }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
                 crate_state.repeat = Some(crate::RepeatState {
                     key: None,
