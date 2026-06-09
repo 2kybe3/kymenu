@@ -14,7 +14,6 @@ use std::{
 
 use memfd::Memfd;
 use memmap2::{Mmap, MmapMut};
-use regex::Regex;
 use wayland_client::{
     Connection, QueueHandle,
     protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
@@ -52,35 +51,36 @@ pub struct Input {
 
 impl Input {
     pub fn get_bins(&self) -> Vec<String> {
-        let mut bins = if let Ok(regex) = Regex::new(&self.input) {
-            self.bins
-                .iter()
-                .filter(|s| regex.is_match(s))
-                .map(|s| s.to_owned())
-                .collect::<Vec<String>>()
-        } else {
-            self.bins
-                .iter()
-                .filter(|b| b.contains(&self.input))
-                .map(|s| s.to_owned())
-                .collect()
-        };
+        let input = self.input.to_lowercase();
+
+        let mut bins: Vec<(String, String)> = self
+            .bins
+            .iter()
+            .filter(|s| {
+                if let Ok(regex) = regex::Regex::new(&self.input) {
+                    regex.is_match(s)
+                } else {
+                    self.input.is_empty() || s.contains(&self.input)
+                }
+            })
+            .map(|s| (s.to_string(), s.to_lowercase()))
+            .collect();
 
         bins.sort_by(|a, b| {
-            let score = |s: &String| {
-                if !self.input.is_empty() && s.starts_with(&self.input) {
+            let score = |s: &str| {
+                if !input.is_empty() && s.starts_with(&input) {
                     0
-                } else if !self.input.is_empty() && s.contains(&self.input) {
+                } else if !input.is_empty() && s.contains(&input) {
                     1
                 } else {
                     2
                 }
             };
 
-            score(a).cmp(&score(b)).then_with(|| a.cmp(b))
+            score(&a.1).cmp(&score(&b.1)).then_with(|| a.0.cmp(&b.0))
         });
 
-        bins
+        bins.into_iter().map(|(orig, _)| orig).collect()
     }
 }
 
