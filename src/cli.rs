@@ -1,5 +1,5 @@
 use crate::color::Color;
-use clap::Parser;
+use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
 #[command(version)]
@@ -47,6 +47,17 @@ pub struct Cli {
     selected_color: Option<String>,
     #[arg(long)]
     extra_text_color: Option<String>,
+
+    #[command(subcommand)]
+    pub command: Option<Commands>,
+}
+
+#[derive(Subcommand, Debug)]
+#[allow(clippy::enum_variant_names)]
+pub enum Commands {
+    GenerateZshCompletion,
+    GenerateFishCompletion,
+    GenerateBashCompletion,
 }
 
 pub struct Extracted<'a> {

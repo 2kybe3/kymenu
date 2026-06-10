@@ -38,6 +38,20 @@ let
     commonArgs
     // {
       inherit cargoArtifacts;
+
+      nativeBuildInputs =
+        commonArgs.nativeBuildInputs
+        ++ (with pkgs; [
+          installShellFiles
+        ]);
+
+      postInstall = ''
+        installShellCompletion --cmd kymenu \
+          --bash <($out/bin/kymenu generate-bash-completion) \
+          --fish <($out/bin/kymenu generate-fish-completion) \
+          --zsh <($out/bin/kymenu generate-zsh-completion)
+      '';
+
       meta.mainProgram = "kymenu";
     }
   );
