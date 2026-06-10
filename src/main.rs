@@ -305,7 +305,7 @@ fn main() -> anyhow::Result<()> {
         (),
     );
 
-    // configure layered_surface and comit surface to get the configured response and also
+    // configure layered_surface and commit surface to get the configured response and also
     // output_width set
     layered_surface.set_size(0, DEFAULT_HEIGHT);
     layered_surface.set_anchor(
@@ -328,7 +328,7 @@ fn main() -> anyhow::Result<()> {
     }
 
     let pool = {
-        // We scope this in the rare case height or width changes and size could be inacurate
+        // We scope this in the rare case height or width changes and size could be inaccurate
         let output = state.output.as_ref().unwrap();
         let size = (output.width * output.height * COLOR_SIZE) as usize;
         let pool_size = size * 2;

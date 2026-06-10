@@ -10,6 +10,11 @@
 
     crane.url = "github:ipetkov/crane";
 
+    treefmt-nix = {
+      url = "github:numtide/treefmt-nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     rust-overlay = {
       url = "github:oxalica/rust-overlay";
       inputs.nixpkgs.follows = "nixpkgs";
@@ -21,6 +26,7 @@
       self,
       crane,
       nixpkgs,
+      treefmt-nix,
       flake-utils,
       rust-overlay,
     }:
@@ -33,13 +39,18 @@
         };
 
         kymenu = pkgs.callPackage ./nix/kymenu.nix { inherit self crane; };
+
+        treefmt-eval = treefmt-nix.lib.evalModule pkgs ./nix/treefmt.nix;
       in
       {
         packages.default = kymenu.kymenu;
 
-        inherit (kymenu) checks;
+        checks = kymenu.checks // {
+          formatting = treefmt-eval.config.build.check self;
+        };
 
         devShells.default = kymenu.devShell;
+        formatter = treefmt-eval.config.build.wrapper;
       }
     );
 }
