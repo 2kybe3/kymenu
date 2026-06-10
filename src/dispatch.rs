@@ -29,8 +29,6 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
             version,
         } = event
         {
-            tracing::info!("[{}] {} (v{})", name, interface, version);
-
             match interface.as_str() {
                 "wl_compositor" => {
                     state.wayland_globals.compositor_name = Some(name);
@@ -73,7 +71,7 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppData {
 
             state.configured = true;
 
-            state.output = Some(crate::Output { width, height })
+            state.output = Some(crate::appdata::Output { width, height })
         }
     }
 }
@@ -130,7 +128,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
 
                 let state = xkb::State::new(&keymap);
 
-                crate_state.xkb = Some(crate::XKB { state })
+                crate_state.xkb = Some(crate::appdata::Xkb(state))
             }
             wl_keyboard::Event::Key { key, state, .. } => {
                 let state = match state {
@@ -162,12 +160,12 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 ..
             } => {
                 if let Some(xkb) = &mut crate_state.xkb {
-                    xkb.state
+                    xkb.0
                         .update_mask(mods_depressed, mods_latched, mods_locked, 0, 0, group);
                 }
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
-                crate_state.repeat = Some(crate::RepeatState {
+                crate_state.repeat = Some(crate::appdata::RepeatState {
                     key: None,
                     started_at: Instant::now(),
                     last_repeat: Instant::now(),

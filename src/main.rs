@@ -1,206 +1,21 @@
+mod appdata;
+mod cli;
 mod color;
 mod dispatch;
 mod font;
 mod path;
 
 use std::{
-    os::{
-        fd::{AsRawFd, BorrowedFd},
-        unix::process::CommandExt,
-    },
-    process::Command,
+    os::fd::{AsRawFd, BorrowedFd},
     time::{Duration, Instant},
 };
 
-use memfd::Memfd;
-use memmap2::{Mmap, MmapMut};
-use regex::Regex;
-use wayland_client::{
-    Connection, QueueHandle,
-    protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
-};
+use clap::Parser;
+use memmap2::Mmap;
+use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
-use xkbcommon::xkb::{self, keysyms};
-use xkeysym::KeyCode;
 
-use crate::{color::Color, path::get_bin_names};
-
-#[derive(Default, Debug)]
-pub struct WaylandGlobals {
-    compositor_name: Option<u32>,
-    compositor_version: Option<u32>,
-    layer_shell_name: Option<u32>,
-    layer_shell_version: Option<u32>,
-    shm_name: Option<u32>,
-    shm_version: Option<u32>,
-    wl_seat_name: Option<u32>,
-    wl_seat_version: Option<u32>,
-}
-
-#[derive(Default, Debug)]
-pub struct Output {
-    width: u32,
-    height: u32,
-}
-
-#[derive(Default, Debug)]
-pub struct Input {
-    input: String,
-
-    bins: Vec<String>,
-    filtered_bins: Vec<String>,
-
-    selected_index: u32,
-}
-
-impl Input {
-    pub fn update_bins(&mut self) {
-        let input = self.input.to_lowercase();
-
-        let regex = Regex::new(&self.input).ok();
-        let mut bins: Vec<(String, String)> = self
-            .bins
-            .iter()
-            .filter(|s| {
-                if input.is_empty() {
-                    true
-                } else if let Some(regex) = &regex {
-                    regex.is_match(s)
-                } else {
-                    self.input.is_empty() || s.contains(&self.input)
-                }
-            })
-            .map(|s| (s.to_string(), s.to_lowercase()))
-            .collect();
-
-        bins.sort_by(|a, b| {
-            let score = |s: &str| {
-                if !input.is_empty() && s.starts_with(&input) {
-                    0
-                } else if !input.is_empty() && s.contains(&input) {
-                    1
-                } else {
-                    2
-                }
-            };
-
-            score(&a.1).cmp(&score(&b.1)).then_with(|| a.0.cmp(&b.0))
-        });
-
-        let bins = bins.into_iter().map(|(orig, _)| orig).collect();
-
-        self.filtered_bins = bins;
-    }
-}
-
-pub struct XKB {
-    state: xkb::State,
-}
-
-#[derive(Debug)]
-struct RepeatState {
-    key: Option<KeyCode>,
-    started_at: Instant,
-    last_repeat: Instant,
-    rate: i32,
-    delay: i32,
-}
-
-impl std::fmt::Debug for XKB {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("XKB").finish()
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct AppData {
-    repeat: Option<RepeatState>,
-    wayland_globals: WaylandGlobals,
-    output: Option<Output>,
-    xkb: Option<XKB>,
-
-    configured: bool,
-    callback_done: bool,
-    redraw_needed: bool,
-
-    buffer_memfd: Option<Memfd>,
-    buffer_mmap: Option<MmapMut>,
-
-    inp: Input,
-}
-
-impl AppData {
-    pub fn handle_key(&mut self, key: KeyCode) {
-        let xkb = self.xkb.as_ref().unwrap();
-
-        let sym = xkb.state.key_get_one_sym(key);
-
-        match sym.into() {
-            keysyms::KEY_Return => {
-                let program = self
-                    .inp
-                    .filtered_bins
-                    .get(self.inp.selected_index as usize)
-                    .unwrap()
-                    .clone();
-                let _ = Command::new(program).exec();
-                unreachable!()
-            }
-            keysyms::KEY_BackSpace => {
-                self.inp.input.pop();
-                self.inp.selected_index = 0;
-                self.inp.update_bins();
-            }
-            keysyms::KEY_Escape => std::process::exit(0),
-            keysyms::KEY_Right => {
-                let max_index = self.inp.filtered_bins.len().saturating_sub(1) as u32;
-                if self.inp.selected_index < max_index {
-                    self.inp.selected_index += 1;
-                }
-            }
-            keysyms::KEY_Left => {
-                if self.inp.selected_index != 0 {
-                    self.inp.selected_index -= 1;
-                }
-            }
-            _ => {
-                let text = self.xkb.as_ref().unwrap().state.key_get_utf8(key);
-
-                if !text.is_empty() {
-                    self.inp.input.push_str(&text);
-                    self.inp.selected_index = 0;
-                    self.inp.update_bins();
-                }
-            }
-        }
-    }
-}
-
-#[derive(Debug)]
-pub struct Registries {
-    pub shm: wl_shm::WlShm,
-    pub seat: wl_seat::WlSeat,
-    pub compositor: wl_compositor::WlCompositor,
-    pub layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1,
-}
-
-static DEFAULT_HEIGHT: u32 = 20;
-
-static PROMPT: &str = ">> ";
-
-static END_ARROW: &str = ">";
-static END_MARGIN: u32 = 5;
-
-static START_ARROW: &str = "<";
-
-static TEXT_MARGIN: u32 = 5;
-
-static ARROW_MARGIN: u32 = 8;
-
-static FONT: &str = "monospace";
-static FONT_SIZE: f32 = 16.0;
-
-static DEFAULT_BIN_START: u32 = 200;
+use crate::{appdata::AppData, cli::Cli};
 
 /*
  * blue:  [base]
@@ -211,70 +26,16 @@ static DEFAULT_BIN_START: u32 = 200;
 static COLOR_FORMAT: wl_shm::Format = wl_shm::Format::Argb8888;
 static COLOR_SIZE: u32 = 4;
 
-pub fn bind_registries(
-    registry: &WlRegistry,
-    qh: &QueueHandle<AppData>,
-    state: &AppData,
-) -> Registries {
-    let shm = if let (Some(name), Some(version)) = (
-        state.wayland_globals.shm_name,
-        state.wayland_globals.shm_version,
-    ) {
-        registry.bind::<wl_shm::WlShm, _, _>(name, version, qh, ())
-    } else {
-        panic!("No shared memory support");
-    };
-
-    let compositor = if let (Some(name), Some(version)) = (
-        state.wayland_globals.compositor_name,
-        state.wayland_globals.compositor_version,
-    ) {
-        registry.bind::<wl_compositor::WlCompositor, _, _>(name, version, qh, ())
-    } else {
-        panic!("No compositor");
-    };
-
-    let layer_shell = if let (Some(name), Some(version)) = (
-        state.wayland_globals.layer_shell_name,
-        state.wayland_globals.layer_shell_version,
-    ) {
-        registry.bind::<zwlr_layer_shell_v1::ZwlrLayerShellV1, _, _>(name, version, qh, ())
-    } else {
-        panic!("No layer shell");
-    };
-
-    let seat = if let (Some(name), Some(version)) = (
-        state.wayland_globals.wl_seat_name,
-        state.wayland_globals.wl_seat_version,
-    ) {
-        registry.bind::<wl_seat::WlSeat, _, _>(name, version, qh, ())
-    } else {
-        panic!("No Seat");
-    };
-
-    Registries {
-        shm,
-        seat,
-        compositor,
-        layer_shell,
-    }
-}
-
 fn main() -> anyhow::Result<()> {
-    // INIT
     tracing_subscriber::fmt().init();
 
-    let mut state = AppData {
-        inp: Input {
-            bins: get_bin_names()?,
-            ..Default::default()
-        },
-        ..Default::default()
-    };
-    state.inp.update_bins();
+    let cli = Cli::parse();
+    let ext = cli.extract();
 
-    let font = font::load_font(font::get_font(FONT, None).ok())?;
+    let mut state = AppData::new()?;
+    let font = font::load_font(font::get_font(ext.font_family, ext.font_style).ok())?;
 
+    // Connect to beloved wayland
     let conn = Connection::connect_to_env()?;
     let display = conn.display();
 
@@ -283,20 +44,21 @@ fn main() -> anyhow::Result<()> {
 
     let registry = display.get_registry(&qh, ());
 
-    // Get registries
-    display.sync(&qh, ());
+    {
+        // Make sure all registries are received
+        display.sync(&qh, ());
 
-    loop {
-        event_queue.roundtrip(&mut state)?;
+        loop {
+            event_queue.roundtrip(&mut state)?;
 
-        if state.callback_done {
-            state.callback_done = false;
-            break;
+            if state.callback_done {
+                state.callback_done = false;
+                break;
+            }
         }
     }
 
-    let registries = bind_registries(&registry, &qh, &state);
-    tracing::info!(registries = ?registries, "loaded registries");
+    let registries = state.wayland_globals.bind_registries(&registry, &qh);
 
     // Create a surface and layered_surface
     let surface = registries.compositor.create_surface(&qh, ());
@@ -309,9 +71,7 @@ fn main() -> anyhow::Result<()> {
         (),
     );
 
-    // configure layered_surface and commit surface to get the configured response and also
-    // output_width set
-    layered_surface.set_size(0, DEFAULT_HEIGHT);
+    layered_surface.set_size(0, ext.height);
     layered_surface.set_anchor(
         zwlr_layer_surface_v1::Anchor::Top
             | zwlr_layer_surface_v1::Anchor::Left
@@ -322,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
     surface.commit();
 
-    // Wait for output_width to be set from wayland server
+    // Wait for output to be set from wayland event from the layered_surface
     loop {
         event_queue.roundtrip(&mut state)?;
 
@@ -332,7 +92,6 @@ fn main() -> anyhow::Result<()> {
     }
 
     let pool = {
-        // We scope this in the rare case height or width changes and size could be inaccurate
         let output = state.output.as_ref().unwrap();
         let size = (output.width * output.height * COLOR_SIZE) as usize;
         let pool_size = size * 2;
@@ -343,7 +102,6 @@ fn main() -> anyhow::Result<()> {
 
         let mmap = unsafe { Mmap::map(fd.as_raw_fd())?.make_mut()? };
 
-        // Pool to create buffers
         let pool = registries.shm.create_pool(
             unsafe { BorrowedFd::borrow_raw(fd.as_raw_fd()) },
             pool_size as i32,
@@ -357,6 +115,7 @@ fn main() -> anyhow::Result<()> {
         pool
     };
 
+    // Start getting keyboard events
     registries.seat.get_keyboard(&qh, ());
 
     let mut frame = 0usize;
@@ -407,21 +166,21 @@ fn main() -> anyhow::Result<()> {
             let buffer = &mut state.buffer_mmap.as_mut().unwrap()[offset..offset + size];
 
             // Background
-            for pixel in buffer.chunks_exact_mut(4) {
-                pixel[..4].copy_from_slice(&Color::BACKGROUND_COLOR.get_bgra());
-            }
+            let bgra = u32::from_le_bytes(ext.background_color.get_bgra());
+            let pixels = bytemuck::cast_slice_mut::<u8, u32>(buffer);
+            pixels.fill(bgra);
 
             // Rendering from left to right
-            let mut index = 0;
+            let mut index = ext.start_margin;
             {
                 // Prompt
-                let size = font.text_width(PROMPT, FONT_SIZE);
+                let size = font.text_width(ext.prompt, ext.font_size);
 
                 font.render_text(
-                    PROMPT,
-                    FONT_SIZE,
+                    ext.prompt,
+                    ext.font_size,
                     index,
-                    &Color::PROMPT_COLOR,
+                    &ext.prompt_color,
                     buffer,
                     height,
                     width,
@@ -429,38 +188,71 @@ fn main() -> anyhow::Result<()> {
 
                 index += size;
             }
+
             {
                 // Current Input
-                let size = font.text_width(&state.inp.input, FONT_SIZE);
+                let mut extra = false;
+                let mut input = state.inp.input.clone();
+
+                let mut size = font.text_width(&input, ext.font_size);
+                if size >= width / 4 {
+                    let mut truncated = String::new();
+
+                    for c in state.inp.input.chars() {
+                        let next = format!("{}...", truncated.clone() + &c.to_string());
+                        if font.text_width(&next, ext.font_size) >= width / 4 {
+                            extra = true;
+                            break;
+                        }
+                        truncated.push(c);
+                    }
+
+                    input = truncated;
+                    size = font.text_width(&input, ext.font_size);
+                }
 
                 font.render_text(
-                    &state.inp.input,
-                    FONT_SIZE,
+                    &input,
+                    ext.font_size,
                     index,
-                    &Color::INPUT_COLOR,
+                    &ext.input_color,
                     buffer,
                     height,
                     width,
                 );
 
                 index += size;
+
+                if extra {
+                    font.render_text(
+                        "...",
+                        ext.font_size,
+                        index,
+                        &ext.extra_text_color,
+                        buffer,
+                        height,
+                        width,
+                    );
+
+                    index += font.text_width("...", ext.font_size);
+                }
             }
 
-            if index < DEFAULT_BIN_START {
-                index = DEFAULT_BIN_START;
+            if index + ext.bin_start_offset < ext.default_bin_start_x {
+                index = ext.default_bin_start_x;
             } else {
-                index += TEXT_MARGIN * 15;
+                index += ext.bin_start_offset;
             }
 
             {
                 // Start Arrow
-                let size = font.text_width(START_ARROW, FONT_SIZE) + ARROW_MARGIN;
+                let size = font.text_width(ext.start_arrow, ext.font_size) + ext.arrow_margin;
 
                 font.render_text(
-                    START_ARROW,
-                    FONT_SIZE,
+                    ext.start_arrow,
+                    ext.font_size,
                     index,
-                    &Color::ARROW_COLOR,
+                    &ext.arrow_color,
                     buffer,
                     height,
                     width,
@@ -470,10 +262,16 @@ fn main() -> anyhow::Result<()> {
 
             // Packages
             let mut all_bins_shown = true;
-            let end_arrow_size = font.text_width(END_ARROW, FONT_SIZE) + END_MARGIN;
+            let end_arrow_size = font.text_width(ext.end_arrow, ext.font_size) + ext.end_margin;
 
-            for (i, bin) in state.inp.filtered_bins.iter().enumerate() {
-                let size = font.text_width(bin, FONT_SIZE) + TEXT_MARGIN;
+            for (i, bin) in state
+                .inp
+                .filtered_bins
+                .iter()
+                .enumerate()
+                .skip(state.inp.selected_index as usize)
+            {
+                let size = font.text_width(bin, ext.font_size) + ext.text_margin;
                 if (index + size) > width - end_arrow_size {
                     all_bins_shown = false;
                     break;
@@ -481,12 +279,12 @@ fn main() -> anyhow::Result<()> {
 
                 font.render_text(
                     bin,
-                    FONT_SIZE,
+                    ext.font_size,
                     index,
                     if i == state.inp.selected_index as usize {
-                        &Color::SELECTED_COLOR
+                        &ext.selected_color
                     } else {
-                        &Color::ITEM_COLOR
+                        &ext.item_color
                     },
                     buffer,
                     height,
@@ -499,14 +297,14 @@ fn main() -> anyhow::Result<()> {
             {
                 // End Arrow
                 font.render_text(
-                    END_ARROW,
-                    FONT_SIZE,
+                    ext.end_arrow,
+                    ext.font_size,
                     if all_bins_shown {
                         index
                     } else {
                         width - end_arrow_size
                     },
-                    &Color::ARROW_COLOR,
+                    &ext.arrow_color,
                     buffer,
                     height,
                     width,

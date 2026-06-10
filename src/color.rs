@@ -6,15 +6,17 @@ pub struct Color {
 }
 
 impl Color {
-    pub const ITEM_COLOR: Color = Color::rgb(255, 255, 255);
+    pub const DEFAULT_ITEM_COLOR: Color = Color::rgb(255, 255, 255);
 
-    pub const BACKGROUND_COLOR: Color = Color::rgba(0, 0, 0, 200);
+    pub const DEFAULT_BACKGROUND_COLOR: Color = Color::rgba(0, 0, 0, 200);
 
-    pub const PROMPT_COLOR: Color = Color::rgb(50, 255, 50);
-    pub const ARROW_COLOR: Color = Color::rgb(50, 255, 50);
+    pub const DEFAULT_PROMPT_COLOR: Color = Color::rgb(50, 255, 50);
+    pub const DEFAULT_ARROW_COLOR: Color = Color::rgb(50, 255, 50);
 
-    pub const INPUT_COLOR: Color = Color::rgb(50, 50, 255);
-    pub const SELECTED_COLOR: Color = Color::rgb(50, 50, 255);
+    pub const DEFAULT_INPUT_COLOR: Color = Color::rgb(50, 50, 255);
+    pub const DEFAULT_SELECTED_COLOR: Color = Color::rgb(50, 50, 255);
+
+    pub const DEFAULT_EXTRA_TEXT_COLOR: Color = Color::rgb(255, 50, 50);
 
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self {
@@ -29,12 +31,22 @@ impl Color {
         Self { r, g, b, a }
     }
 
-    #[allow(unused)]
     pub fn hex(hex: &str) -> Self {
+        let hex = match hex.strip_prefix('#') {
+            Some(v) => v,
+            None => hex,
+        }
+        .trim();
+        tracing::info!("{hex}");
+
         let r = u8::from_str_radix(&hex[0..2], 16).unwrap();
-        let g = u8::from_str_radix(&hex[0..2], 16).unwrap();
-        let b = u8::from_str_radix(&hex[0..2], 16).unwrap();
-        let a = u8::from_str_radix(&hex[0..2], 16).unwrap_or(u8::MAX);
+        let g = u8::from_str_radix(&hex[2..4], 16).unwrap();
+        let b = u8::from_str_radix(&hex[4..6], 16).unwrap();
+        let a = if hex.len() == 8 {
+            u8::from_str_radix(&hex[6..8], 16).unwrap()
+        } else {
+            255
+        };
         Self { r, g, b, a }
     }
 
