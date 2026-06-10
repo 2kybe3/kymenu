@@ -16,7 +16,11 @@ pub struct Cli {
     #[arg(long)]
     end_arrow: Option<String>,
     #[arg(long)]
+    end_arrow_more: Option<String>,
+    #[arg(long)]
     start_arrow: Option<String>,
+    #[arg(long)]
+    start_arrow_more: Option<String>,
     #[arg(long)]
     end_margin: Option<u32>,
     #[arg(long)]
@@ -67,7 +71,9 @@ pub struct Extracted<'a> {
     pub height: u32,
     pub prompt: &'a str,
     pub end_arrow: &'a str,
+    pub end_arrow_more: &'a str,
     pub start_arrow: &'a str,
+    pub start_arrow_more: &'a str,
     pub end_margin: u32,
     pub start_margin: u32,
     pub text_margin: u32,
@@ -95,7 +101,9 @@ impl Cli {
             height: self.height.unwrap_or(20),
             prompt: self.prompt.as_deref().unwrap_or(">> "),
             end_arrow: self.end_arrow.as_deref().unwrap_or(">"),
+            end_arrow_more: self.end_arrow_more.as_deref().unwrap_or(">>"),
             start_arrow: self.start_arrow.as_deref().unwrap_or("<"),
+            start_arrow_more: self.start_arrow_more.as_deref().unwrap_or("<<"),
             end_margin: self.end_margin.unwrap_or(0),
             start_margin: self.start_margin.unwrap_or(0),
             text_margin: self.text_margin.unwrap_or(5),

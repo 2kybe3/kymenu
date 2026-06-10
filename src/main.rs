@@ -270,10 +270,16 @@ fn main() -> anyhow::Result<()> {
 
             {
                 // Start Arrow
-                let size = font.text_width(ext.start_arrow, ext.font_size) + ext.arrow_margin;
+                let arrow = if state.inp.selected_index == 0 {
+                    ext.start_arrow
+                } else {
+                    ext.start_arrow_more
+                };
+
+                let size = font.text_width(arrow, ext.font_size) + ext.arrow_margin;
 
                 font.render_text(
-                    ext.start_arrow,
+                    arrow,
                     ext.font_size,
                     index,
                     &ext.arrow_color,
@@ -286,7 +292,10 @@ fn main() -> anyhow::Result<()> {
 
             // Packages
             let mut all_bins_shown = true;
-            let end_arrow_size = font.text_width(ext.end_arrow, ext.font_size) + ext.end_margin;
+            let end_arrow_size = u32::max(
+                font.text_width(ext.end_arrow, ext.font_size),
+                font.text_width(ext.end_arrow_more, ext.font_size),
+            ) + ext.end_margin;
 
             for (i, bin) in state
                 .inp
@@ -320,14 +329,16 @@ fn main() -> anyhow::Result<()> {
 
             {
                 // End Arrow
+                let arrow = if all_bins_shown {
+                    ext.end_arrow
+                } else {
+                    ext.end_arrow_more
+                };
+                let size = font.text_width(arrow, ext.font_size) + ext.end_margin;
                 font.render_text(
-                    ext.end_arrow,
+                    arrow,
                     ext.font_size,
-                    if all_bins_shown {
-                        index
-                    } else {
-                        width - end_arrow_size
-                    },
+                    if all_bins_shown { index } else { width - size },
                     &ext.arrow_color,
                     buffer,
                     height,
