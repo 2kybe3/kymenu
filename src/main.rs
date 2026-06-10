@@ -273,7 +273,7 @@ fn main() -> anyhow::Result<()> {
     };
     state.inp.update_bins();
 
-    let font = font::load_font(font::get_font(FONT, None)?)?;
+    let font = font::load_font(font::get_font(FONT, None).ok())?;
 
     let conn = Connection::connect_to_env()?;
     let display = conn.display();

@@ -14,7 +14,16 @@ pub fn get_font(family: &str, style: Option<&str>) -> anyhow::Result<fontconfig:
     Ok(font)
 }
 
-pub fn load_font(font: fontconfig::Font) -> anyhow::Result<TextRender> {
+pub fn load_font(font: Option<fontconfig::Font>) -> anyhow::Result<TextRender> {
+    let font = match font {
+        Some(v) => v,
+        None => {
+            return Ok(TextRender(
+                include_bytes!("../assets/font/FiraCode-Regular.ttf").to_vec(),
+            ));
+        }
+    };
+
     let mut file = OpenOptions::new().read(true).open(font.path)?;
 
     let mut buffer = Vec::new();

@@ -1,4 +1,5 @@
 {
+  lib,
   pkgs,
   crane,
   ...
@@ -6,7 +7,15 @@
 let
   craneLib = (crane.mkLib pkgs).overrideToolchain (p: p.rust-bin.stable.latest.default);
 
-  src = craneLib.cleanCargoSource ../.;
+  unfilteredRoot = ../.;
+
+  src = lib.fileset.toSource {
+    root = unfilteredRoot;
+    fileset = lib.fileset.unions [
+      (craneLib.fileset.commonCargoSources unfilteredRoot)
+      ../assets/font/FiraCode-Regular.ttf
+    ];
+  };
 
   commonArgs = {
     inherit src;
