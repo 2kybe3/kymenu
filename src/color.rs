@@ -37,7 +37,6 @@ impl Color {
             None => hex,
         }
         .trim();
-        tracing::info!("{hex}");
 
         let r = u8::from_str_radix(&hex[0..2], 16).unwrap();
         let g = u8::from_str_radix(&hex[2..4], 16).unwrap();

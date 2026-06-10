@@ -27,8 +27,6 @@ static COLOR_FORMAT: wl_shm::Format = wl_shm::Format::Argb8888;
 static COLOR_SIZE: u32 = 4;
 
 fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt().init();
-
     let cli = Cli::parse();
     let ext = cli.extract();
 
