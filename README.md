@@ -1,4 +1,4 @@
-# kybar
+# kymenu
 
 A status bar inspired by dmenu written in rust for wayland
 

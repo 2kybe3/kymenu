@@ -25,16 +25,16 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
-  kybar = craneLib.buildPackage (
+  kymenu = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
-      meta.mainProgram = "kybar";
+      meta.mainProgram = "kymenu";
     }
   );
 
   checks = {
-    inherit kybar;
+    inherit kymenu;
     webhook-router-clippy = craneLib.cargoClippy (
       commonArgs
       // {
@@ -49,5 +49,5 @@ let
   };
 in
 {
-  inherit checks devShell kybar;
+  inherit checks devShell kymenu;
 }

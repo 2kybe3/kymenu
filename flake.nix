@@ -32,14 +32,14 @@
           overlays = [ rust-overlay.overlays.default ];
         };
 
-        kybar = pkgs.callPackage ./nix/kybar.nix { inherit self crane; };
+        kymenu = pkgs.callPackage ./nix/kymenu.nix { inherit self crane; };
       in
       {
-        packages.default = kybar.kybar;
+        packages.default = kymenu.kymenu;
 
-        inherit (kybar) checks;
+        inherit (kymenu) checks;
 
-        devShells.default = kybar.devShell;
+        devShells.default = kymenu.devShell;
       }
     );
 }
