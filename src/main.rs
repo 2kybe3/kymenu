@@ -189,16 +189,6 @@ static FONT_SIZE: f32 = 16.0;
 
 static DEFAULT_BIN_START: u32 = 200;
 
-static BACKGROUND_COLOR: color::Color = Color::rgba(0, 0, 0, 200);
-
-static ITEM_COLOR: color::Color = Color::rgb(255, 255, 255);
-
-static PROMPT_COLOR: color::Color = Color::rgb(50, 255, 50);
-static ARROW_COLOR: color::Color = Color::rgb(50, 255, 50);
-
-static INPUT_COLOR: color::Color = Color::rgb(50, 50, 255);
-static SELECTED_COLOR: color::Color = Color::rgb(50, 50, 255);
-
 /*
  * blue:  [base]
  * green: [base + 1]
@@ -404,7 +394,7 @@ fn main() -> anyhow::Result<()> {
 
             // Background
             for pixel in buffer.chunks_exact_mut(4) {
-                pixel[..4].copy_from_slice(&BACKGROUND_COLOR.get_bgra());
+                pixel[..4].copy_from_slice(&Color::BACKGROUND_COLOR.get_bgra());
             }
 
             // Rendering from left to right
@@ -417,7 +407,7 @@ fn main() -> anyhow::Result<()> {
                     PROMPT,
                     FONT_SIZE,
                     index,
-                    &PROMPT_COLOR,
+                    &Color::PROMPT_COLOR,
                     buffer,
                     height,
                     width,
@@ -433,7 +423,7 @@ fn main() -> anyhow::Result<()> {
                     &state.inp.input,
                     FONT_SIZE,
                     index,
-                    &INPUT_COLOR,
+                    &Color::INPUT_COLOR,
                     buffer,
                     height,
                     width,
@@ -456,7 +446,7 @@ fn main() -> anyhow::Result<()> {
                     START_ARROW,
                     FONT_SIZE,
                     index,
-                    &ARROW_COLOR,
+                    &Color::ARROW_COLOR,
                     buffer,
                     height,
                     width,
@@ -480,9 +470,9 @@ fn main() -> anyhow::Result<()> {
                     FONT_SIZE,
                     index,
                     if i == state.inp.selected_index as usize {
-                        &SELECTED_COLOR
+                        &Color::SELECTED_COLOR
                     } else {
-                        &ITEM_COLOR
+                        &Color::ITEM_COLOR
                     },
                     buffer,
                     height,
@@ -502,7 +492,7 @@ fn main() -> anyhow::Result<()> {
                     } else {
                         width - end_arrow_size
                     },
-                    &ARROW_COLOR,
+                    &Color::ARROW_COLOR,
                     buffer,
                     height,
                     width,

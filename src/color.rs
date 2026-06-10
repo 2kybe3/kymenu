@@ -6,6 +6,16 @@ pub struct Color {
 }
 
 impl Color {
+    pub const ITEM_COLOR: Color = Color::rgb(255, 255, 255);
+
+    pub const BACKGROUND_COLOR: Color = Color::rgba(0, 0, 0, 200);
+
+    pub const PROMPT_COLOR: Color = Color::rgb(50, 255, 50);
+    pub const ARROW_COLOR: Color = Color::rgb(50, 255, 50);
+
+    pub const INPUT_COLOR: Color = Color::rgb(50, 50, 255);
+    pub const SELECTED_COLOR: Color = Color::rgb(50, 50, 255);
+
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self {
             r,
