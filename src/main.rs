@@ -14,6 +14,7 @@ use std::{
 
 use memfd::Memfd;
 use memmap2::{Mmap, MmapMut};
+use regex::Regex;
 use wayland_client::{
     Connection, QueueHandle,
     protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
@@ -45,19 +46,25 @@ pub struct Output {
 #[derive(Default, Debug)]
 pub struct Input {
     input: String,
+
     bins: Vec<String>,
+    filtered_bins: Vec<String>,
+
     selected_index: u32,
 }
 
 impl Input {
-    pub fn get_bins(&self) -> Vec<String> {
+    pub fn update_bins(&mut self) {
         let input = self.input.to_lowercase();
 
+        let regex = Regex::new(&self.input).ok();
         let mut bins: Vec<(String, String)> = self
             .bins
             .iter()
             .filter(|s| {
-                if let Ok(regex) = regex::Regex::new(&self.input) {
+                if input.is_empty() {
+                    true
+                } else if let Some(regex) = &regex {
                     regex.is_match(s)
                 } else {
                     self.input.is_empty() || s.contains(&self.input)
@@ -80,7 +87,9 @@ impl Input {
             score(&a.1).cmp(&score(&b.1)).then_with(|| a.0.cmp(&b.0))
         });
 
-        bins.into_iter().map(|(orig, _)| orig).collect()
+        let bins = bins.into_iter().map(|(orig, _)| orig).collect();
+
+        self.filtered_bins = bins;
     }
 }
 
@@ -130,7 +139,7 @@ impl AppData {
             keysyms::KEY_Return => {
                 let program = self
                     .inp
-                    .get_bins()
+                    .filtered_bins
                     .get(self.inp.selected_index as usize)
                     .unwrap()
                     .clone();
@@ -139,10 +148,13 @@ impl AppData {
             }
             keysyms::KEY_BackSpace => {
                 self.inp.input.pop();
+                self.inp.selected_index = 0;
+                self.inp.update_bins();
             }
             keysyms::KEY_Escape => std::process::exit(0),
             keysyms::KEY_Right => {
-                if self.inp.selected_index < self.inp.get_bins().len() as u32 - 1 {
+                let max_index = self.inp.filtered_bins.len().saturating_sub(1) as u32;
+                if self.inp.selected_index < max_index {
                     self.inp.selected_index += 1;
                 }
             }
@@ -157,6 +169,7 @@ impl AppData {
                 if !text.is_empty() {
                     self.inp.input.push_str(&text);
                     self.inp.selected_index = 0;
+                    self.inp.update_bins();
                 }
             }
         }
@@ -258,6 +271,7 @@ fn main() -> anyhow::Result<()> {
         },
         ..Default::default()
     };
+    state.inp.update_bins();
 
     let font = font::load_font(font::get_font(FONT, None)?)?;
 
@@ -458,7 +472,7 @@ fn main() -> anyhow::Result<()> {
             let mut all_bins_shown = true;
             let end_arrow_size = font.text_width(END_ARROW, FONT_SIZE) + END_MARGIN;
 
-            for (i, bin) in state.inp.get_bins().iter().enumerate() {
+            for (i, bin) in state.inp.filtered_bins.iter().enumerate() {
                 let size = font.text_width(bin, FONT_SIZE) + TEXT_MARGIN;
                 if (index + size) > width - end_arrow_size {
                     all_bins_shown = false;
