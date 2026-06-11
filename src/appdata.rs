@@ -2,7 +2,6 @@ use std::{os::unix::process::CommandExt, process::Command, time::Instant};
 
 use memfd::Memfd;
 use memmap2::MmapMut;
-use regex::Regex;
 use wayland_client::{
     QueueHandle,
     protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
@@ -94,15 +93,12 @@ impl Input {
     pub fn update_bins(&mut self) {
         let input = self.input.to_lowercase();
 
-        let regex = Regex::new(&self.input).ok();
         let mut bins: Vec<(String, String)> = self
             .bins
             .iter()
             .filter(|s| {
                 if input.is_empty() {
                     true
-                } else if let Some(regex) = &regex {
-                    regex.is_match(s)
                 } else {
                     self.input.is_empty() || s.contains(&self.input)
                 }

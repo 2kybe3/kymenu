@@ -12,7 +12,6 @@ clap_complete = "4.6.5"
 fontconfig = "0.10.2"
 memfd = "0.6.5"
 memmap2 = "0.9.10"
-regex = "1.12.4"
 wayland-client = "0.31.14"
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 xkbcommon = "0.9.0"
