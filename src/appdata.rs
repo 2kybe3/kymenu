@@ -1,7 +1,15 @@
-use std::{os::unix::process::CommandExt, process::Command, time::Instant};
+use std::{
+    env, fs,
+    io::{self, IsTerminal, Read},
+    os::unix::{fs::PermissionsExt, process::CommandExt},
+    process::Command,
+    time::Instant,
+};
 
+use anyhow::Context;
 use memfd::Memfd;
 use memmap2::MmapMut;
+use serde::{Deserialize, Serialize};
 use wayland_client::{
     QueueHandle,
     protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
@@ -74,20 +82,144 @@ pub struct Input {
 
     input: String,
 
-    bins: Vec<String>,
-    filtered_bins: Vec<String>,
+    inputs: InputItems,
+    filtered_inputs: Vec<InputItem>,
 
     selected_index: u32,
 }
 
+#[derive(Default, Debug, Serialize, Deserialize)]
+pub struct InputItems(pub Vec<InputItem>);
+
+impl InputItems {
+    pub fn new(extracted: &Extracted) -> Self {
+        if extracted.path_launcher {
+            Self::from_path()
+        } else if extracted.json_in {
+            Self::from_json_in()
+        } else {
+            Self::from_input()
+        }
+    }
+
+    fn get_stdin() -> String {
+        let mut input = String::new();
+        io::stdin()
+            .read_to_string(&mut input)
+            .context("failed to read from stdin")
+            .unwrap();
+
+        input
+    }
+
+    fn from_input() -> InputItems {
+        if io::stdin().is_terminal() {
+            tracing::warn!("expected input from a pipe, you might wanna run --path-launcher");
+            std::process::exit(1);
+        }
+
+        InputItems(
+            Self::get_stdin()
+                .lines()
+                .map(|v| InputItem::new(v.to_string(), serde_json::Value::String(v.to_string())))
+                .collect(),
+        )
+    }
+
+    fn from_json_in() -> InputItems {
+        if io::stdin().is_terminal() {
+            tracing::warn!(
+                r#"expected input from a pipe in form of [{{"display": "Name", "raw": 69}}]"#
+            );
+
+            std::process::exit(1);
+        }
+
+        let input = Self::get_stdin();
+
+        serde_json::from_str(&input)
+            .context("failed to parse input")
+            .unwrap()
+    }
+
+    fn from_path() -> InputItems {
+        let mut bins = Vec::new();
+
+        let path = match env::var("PATH") {
+            Ok(v) => v,
+            Err(_) => {
+                tracing::error!("No PATH set");
+                std::process::exit(1);
+            }
+        };
+        for dir in path.split(':') {
+            let entries = match fs::read_dir(dir) {
+                Ok(entries) => entries,
+                Err(_) => continue,
+            };
+
+            for entry in entries {
+                let entry = match entry {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("{e:?}");
+                        continue;
+                    }
+                };
+                let path = entry.path();
+
+                if path.is_file() {
+                    let metadata = match fs::metadata(&path) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            tracing::warn!("{e:?}");
+                            continue;
+                        }
+                    };
+                    let permissions = metadata.permissions();
+                    if permissions.mode() & 0o111 != 0
+                        && let Some(name) = entry.file_name().to_str()
+                    {
+                        bins.push(InputItem::new(
+                            name.to_owned(),
+                            serde_json::Value::String(path.to_str().unwrap().to_string()),
+                        ));
+                    }
+                }
+            }
+        }
+
+        InputItems(bins)
+    }
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct InputItem {
+    display: String,
+    raw: serde_json::Value,
+}
+
+impl InputItem {
+    pub fn new(display: String, raw: serde_json::Value) -> Self {
+        Self { display, raw }
+    }
+
+    pub fn display(&self) -> &str {
+        &self.display
+    }
+}
+
 impl Input {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(inputs: InputItems) -> anyhow::Result<Self> {
         let mut new = Self {
             dirty: true,
-            input: Default::default(),
-            bins: crate::path::get_bin_names()?,
-            filtered_bins: Default::default(),
-            selected_index: Default::default(),
+
+            input: String::new(),
+
+            inputs,
+            filtered_inputs: vec![],
+
+            selected_index: 0,
         };
         new.update_bins();
         Ok(new)
@@ -130,7 +262,7 @@ impl Input {
     pub fn move_right(&mut self) {
         let old = self.selected_index();
 
-        let max_index = self.filtered_bins().len().saturating_sub(1) as u32;
+        let max_index = self.filtered_inputs().len().saturating_sub(1) as u32;
         self.selected_index = (self.selected_index() + 1).min(max_index);
 
         if old != self.selected_index() {
@@ -141,17 +273,18 @@ impl Input {
     pub fn update_bins(&mut self) {
         let input = self.input.to_lowercase();
 
-        let mut bins: Vec<(String, String)> = self
-            .bins
+        let mut bins: Vec<(InputItem, String)> = self
+            .inputs
+            .0
             .iter()
             .filter(|s| {
                 if input.is_empty() {
                     true
                 } else {
-                    self.input.is_empty() || s.contains(&self.input)
+                    self.input.is_empty() || s.display.contains(&self.input)
                 }
             })
-            .map(|s| (s.to_string(), s.to_lowercase()))
+            .map(|s| (s.clone(), s.display.to_lowercase()))
             .collect();
 
         bins.sort_by(|a, b| {
@@ -165,20 +298,22 @@ impl Input {
                 }
             };
 
-            score(&a.1).cmp(&score(&b.1)).then_with(|| a.0.cmp(&b.0))
+            score(&a.1)
+                .cmp(&score(&b.1))
+                .then_with(|| a.0.display.cmp(&b.0.display))
         });
 
         let bins = bins.into_iter().map(|(orig, _)| orig).collect();
 
-        self.filtered_bins = bins;
+        self.filtered_inputs = bins;
     }
 
     pub fn input(&self) -> &str {
         &self.input
     }
 
-    pub fn filtered_bins(&self) -> &[String] {
-        &self.filtered_bins
+    pub fn filtered_inputs(&self) -> &[InputItem] {
+        &self.filtered_inputs
     }
 
     pub fn selected_index(&self) -> u32 {
@@ -230,7 +365,7 @@ pub struct AppData {
 }
 
 impl AppData {
-    pub fn new(extracted: Extracted) -> anyhow::Result<Self> {
+    pub fn new(extracted: Extracted, inputs: InputItems) -> anyhow::Result<Self> {
         Ok(Self {
             repeat: None,
             wayland_globals: WaylandGlobals::default(),
@@ -243,7 +378,7 @@ impl AppData {
             buffer_memfd: None,
             buffer_mmap: None,
 
-            inp: Input::new()?,
+            inp: Input::new(inputs)?,
 
             extracted,
         })
@@ -256,14 +391,25 @@ impl AppData {
 
         match sym.into() {
             keysyms::KEY_Return => {
-                let program = self
+                let result = self
                     .inp
-                    .filtered_bins
+                    .filtered_inputs()
                     .get(self.inp.selected_index as usize)
                     .unwrap()
                     .clone();
-                let _ = Command::new(program).exec();
-                unreachable!()
+
+                if let serde_json::Value::String(ref raw) = result.raw
+                    && self.extracted.path_launcher
+                {
+                    let _ = Command::new(raw).exec();
+                    std::process::exit(1)
+                } else if self.extracted.json_out {
+                    println!("{}", serde_json::to_string(&result).unwrap());
+                    std::process::exit(0)
+                } else {
+                    println!("{}", result.raw);
+                    std::process::exit(0)
+                }
             }
             keysyms::KEY_BackSpace => self.inp.pop(),
             keysyms::KEY_Escape => std::process::exit(0),

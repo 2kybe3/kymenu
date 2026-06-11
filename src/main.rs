@@ -3,7 +3,6 @@ mod cli;
 mod color;
 mod dispatch;
 mod font;
-mod path;
 
 use std::{
     io,
@@ -16,7 +15,10 @@ use memmap2::Mmap;
 use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
-use crate::{appdata::AppData, cli::Cli};
+use crate::{
+    appdata::{AppData, InputItems},
+    cli::Cli,
+};
 
 /*
  * blue:  [base]
@@ -30,6 +32,8 @@ static COLOR_SIZE: u32 = 4;
 static NAME: &str = "kymenu";
 
 fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt().init();
+
     let cli = Cli::parse();
 
     if let Some(cmd) = cli.command {
@@ -56,7 +60,13 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(0);
     };
 
-    let mut state = AppData::new(cli.extract())?;
+    let mut state = {
+        let extracted = cli.extract();
+
+        let inputs = InputItems::new(&extracted);
+
+        AppData::new(extracted, inputs)?
+    };
 
     let font = font::load_font(
         font::get_font(
@@ -187,8 +197,6 @@ fn main() -> anyhow::Result<()> {
         }
 
         if state.configured && state.inp.dirty {
-            eprintln!("render");
-
             let output = state.output.as_ref().unwrap();
             let width = output.width;
             let height = output.height;
@@ -324,15 +332,15 @@ fn main() -> anyhow::Result<()> {
 
             for (i, bin) in state
                 .inp
-                .filtered_bins()
+                .filtered_inputs()
                 .iter()
                 .enumerate()
                 .skip(state.inp.selected_index() as usize)
             {
-                let size =
-                    font.text_width(bin, state.extracted.font_size) + state.extracted.text_margin;
+                let size = font.text_width(bin.display(), state.extracted.font_size)
+                    + state.extracted.text_margin;
 
-                let last = i == state.inp.filtered_bins().len() - 1;
+                let last = i == state.inp.filtered_inputs().len() - 1;
 
                 if (index + size)
                     > width
@@ -347,7 +355,7 @@ fn main() -> anyhow::Result<()> {
                 }
 
                 font.render_text(
-                    bin,
+                    bin.display(),
                     state.extracted.font_size,
                     index,
                     if i == state.inp.selected_index() as usize {

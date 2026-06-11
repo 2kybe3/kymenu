@@ -35,6 +35,12 @@ pub struct Cli {
     default_bin_start: Option<u32>,
     #[arg(long)]
     bin_start_margin: Option<u32>,
+    #[arg(long)]
+    path_launcher: bool,
+    #[arg(long)]
+    json_out: bool,
+    #[arg(long)]
+    json_in: bool,
 
     // Colors
     #[arg(long)]
@@ -82,6 +88,9 @@ pub struct Extracted {
     pub font_size: f32,
     pub default_bin_start_x: u32,
     pub bin_start_offset: u32,
+    pub path_launcher: bool,
+    pub json_out: bool,
+    pub json_in: bool,
 
     // Colors
     pub item_color: Color,
@@ -116,6 +125,9 @@ impl Cli {
             font_size: self.font_size.unwrap_or(16.0),
             default_bin_start_x: self.default_bin_start.unwrap_or(200),
             bin_start_offset: self.bin_start_margin.unwrap_or(75),
+            path_launcher: self.path_launcher,
+            json_out: self.json_out,
+            json_in: self.json_in,
 
             // Colors
             item_color: self

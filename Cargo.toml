@@ -12,6 +12,10 @@ clap_complete = "4.6.5"
 fontconfig = "0.10.2"
 memfd = "0.6.5"
 memmap2 = "0.9.10"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+tracing = "0.1.44"
+tracing-subscriber = "0.3.23"
 wayland-client = "0.31.14"
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 xkbcommon = "0.9.0"
