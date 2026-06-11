@@ -11,7 +11,7 @@ pub struct Cli {
     font_style: Option<String>,
     #[arg(long)]
     height: Option<u32>,
-    #[arg(long)]
+    #[arg(short, long)]
     prompt: Option<String>,
     #[arg(long)]
     end_arrow: Option<String>,
