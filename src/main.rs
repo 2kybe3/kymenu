@@ -337,10 +337,14 @@ fn main() -> anyhow::Result<()> {
                 .enumerate()
                 .skip(state.inp.selected_index() as usize)
             {
-                let size = font.text_width(bin.display(), state.extracted.font_size)
-                    + state.extracted.text_margin;
-
                 let last = i == state.inp.filtered_inputs().len() - 1;
+
+                let size = font.text_width(bin.display(), state.extracted.font_size)
+                    + if last {
+                        state.extracted.arrow_margin
+                    } else {
+                        state.extracted.text_margin
+                    };
 
                 if (index + size)
                     > width
