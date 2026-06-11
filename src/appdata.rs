@@ -10,6 +10,8 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xkbcommon::xkb::{self, keysyms};
 use xkeysym::KeyCode;
 
+use crate::cli::Extracted;
+
 #[derive(Default, Debug)]
 pub struct WaylandGlobals {
     pub compositor_name: Option<u32>,
@@ -68,17 +70,20 @@ pub struct Output {
 
 #[derive(Default, Debug)]
 pub struct Input {
-    pub input: String,
+    pub dirty: bool,
+
+    input: String,
 
     bins: Vec<String>,
-    pub filtered_bins: Vec<String>,
+    filtered_bins: Vec<String>,
 
-    pub selected_index: u32,
+    selected_index: u32,
 }
 
 impl Input {
     pub fn new() -> anyhow::Result<Self> {
         let mut new = Self {
+            dirty: true,
             input: Default::default(),
             bins: crate::path::get_bin_names()?,
             filtered_bins: Default::default(),
@@ -87,9 +92,52 @@ impl Input {
         new.update_bins();
         Ok(new)
     }
-}
 
-impl Input {
+    pub fn pop(&mut self) {
+        if self.input().is_empty() {
+            return;
+        }
+
+        self.input.pop();
+        self.selected_index = 0;
+        self.update_bins();
+
+        self.dirty = true;
+    }
+
+    pub fn push(&mut self, str: &str) {
+        if str.is_empty() {
+            return;
+        }
+
+        self.input.push_str(str);
+        self.selected_index = 0;
+        self.update_bins();
+
+        self.dirty = true;
+    }
+
+    pub fn move_left(&mut self) {
+        let old = self.selected_index();
+
+        self.selected_index = self.selected_index().saturating_sub(1);
+
+        if old != self.selected_index() {
+            self.dirty = true;
+        }
+    }
+
+    pub fn move_right(&mut self) {
+        let old = self.selected_index();
+
+        let max_index = self.filtered_bins().len().saturating_sub(1) as u32;
+        self.selected_index = (self.selected_index() + 1).min(max_index);
+
+        if old != self.selected_index() {
+            self.dirty = true;
+        }
+    }
+
     pub fn update_bins(&mut self) {
         let input = self.input.to_lowercase();
 
@@ -124,6 +172,18 @@ impl Input {
 
         self.filtered_bins = bins;
     }
+
+    pub fn input(&self) -> &str {
+        &self.input
+    }
+
+    pub fn filtered_bins(&self) -> &[String] {
+        &self.filtered_bins
+    }
+
+    pub fn selected_index(&self) -> u32 {
+        self.selected_index
+    }
 }
 
 pub struct Xkb(pub xkb::State);
@@ -151,7 +211,7 @@ pub struct Registries {
     pub layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1,
 }
 
-#[derive(Default, Debug)]
+#[derive(Debug)]
 pub struct AppData {
     pub repeat: Option<RepeatState>,
     pub wayland_globals: WaylandGlobals,
@@ -160,19 +220,32 @@ pub struct AppData {
 
     pub configured: bool,
     pub callback_done: bool,
-    pub redraw_needed: bool,
 
     pub buffer_memfd: Option<Memfd>,
     pub buffer_mmap: Option<MmapMut>,
 
     pub inp: Input,
+
+    pub extracted: Extracted,
 }
 
 impl AppData {
-    pub fn new() -> anyhow::Result<Self> {
+    pub fn new(extracted: Extracted) -> anyhow::Result<Self> {
         Ok(Self {
+            repeat: None,
+            wayland_globals: WaylandGlobals::default(),
+            output: None,
+            xkb: None,
+
+            configured: false,
+            callback_done: false,
+
+            buffer_memfd: None,
+            buffer_mmap: None,
+
             inp: Input::new()?,
-            ..Default::default()
+
+            extracted,
         })
     }
 
@@ -192,32 +265,14 @@ impl AppData {
                 let _ = Command::new(program).exec();
                 unreachable!()
             }
-            keysyms::KEY_BackSpace => {
-                self.inp.input.pop();
-                self.inp.selected_index = 0;
-                self.inp.update_bins();
-            }
+            keysyms::KEY_BackSpace => self.inp.pop(),
             keysyms::KEY_Escape => std::process::exit(0),
-            keysyms::KEY_Right => {
-                let max_index = self.inp.filtered_bins.len().saturating_sub(1) as u32;
-                if self.inp.selected_index < max_index {
-                    self.inp.selected_index += 1;
-                }
-            }
-            keysyms::KEY_Left => {
-                if self.inp.selected_index != 0 {
-                    self.inp.selected_index -= 1;
-                }
-            }
-            _ => {
-                let text = self.xkb.as_ref().unwrap().0.key_get_utf8(key);
+            keysyms::KEY_Right => self.inp.move_right(),
+            keysyms::KEY_Left => self.inp.move_left(),
 
-                if !text.is_empty() {
-                    self.inp.input.push_str(&text);
-                    self.inp.selected_index = 0;
-                    self.inp.update_bins();
-                }
-            }
+            _ => self
+                .inp
+                .push(&self.xkb.as_ref().unwrap().0.key_get_utf8(key)),
         }
     }
 }

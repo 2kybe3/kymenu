@@ -87,7 +87,6 @@ impl Dispatch<wl_callback::WlCallback, ()> for AppData {
     ) {
         if let wl_callback::Event::Done { .. } = event {
             state.callback_done = true;
-            state.redraw_needed = true;
         }
     }
 }

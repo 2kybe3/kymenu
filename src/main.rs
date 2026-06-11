@@ -56,10 +56,15 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(0);
     };
 
-    let ext = cli.extract();
+    let mut state = AppData::new(cli.extract())?;
 
-    let mut state = AppData::new()?;
-    let font = font::load_font(font::get_font(ext.font_family, ext.font_style).ok())?;
+    let font = font::load_font(
+        font::get_font(
+            &state.extracted.font_family,
+            state.extracted.font_style.as_deref(),
+        )
+        .ok(),
+    )?;
 
     // Connect to beloved wayland
     let conn = Connection::connect_to_env()?;
@@ -97,7 +102,7 @@ fn main() -> anyhow::Result<()> {
         (),
     );
 
-    layered_surface.set_size(0, ext.height);
+    layered_surface.set_size(0, state.extracted.height);
     layered_surface.set_anchor(
         zwlr_layer_surface_v1::Anchor::Top
             | zwlr_layer_surface_v1::Anchor::Left
@@ -144,8 +149,21 @@ fn main() -> anyhow::Result<()> {
     // Start getting keyboard events
     registries.seat.get_keyboard(&qh, ());
 
+    // Wait for keyboard to be set up
+    loop {
+        event_queue.roundtrip(&mut state)?;
+
+        if state.xkb.is_some() {
+            break;
+        }
+    }
+
+    // No frame is request so the loop would just sit there so we first have to set the dirty state
+    // once so we start sending frames (just adding surface.frame,commit now would also work but
+    // seems bloat)
+    state.inp.dirty = true;
+
     let mut frame = 0usize;
-    let mut surface_attached = false;
 
     loop {
         let mut repeated_key = None;
@@ -168,8 +186,8 @@ fn main() -> anyhow::Result<()> {
             state.handle_key(key);
         }
 
-        if state.configured && state.redraw_needed {
-            state.redraw_needed = false;
+        if state.configured && state.inp.dirty {
+            eprintln!("render");
 
             let output = state.output.as_ref().unwrap();
             let width = output.width;
@@ -192,21 +210,21 @@ fn main() -> anyhow::Result<()> {
             let buffer = &mut state.buffer_mmap.as_mut().unwrap()[offset..offset + size];
 
             // Background
-            let bgra = u32::from_le_bytes(ext.background_color.get_bgra());
+            let bgra = u32::from_le_bytes(state.extracted.background_color.get_bgra());
             let pixels = bytemuck::cast_slice_mut::<u8, u32>(buffer);
             pixels.fill(bgra);
 
             // Rendering from left to right
-            let mut index = ext.start_margin;
+            let mut index = state.extracted.start_margin;
             {
                 // Prompt
-                let size = font.text_width(ext.prompt, ext.font_size);
+                let size = font.text_width(&state.extracted.prompt, state.extracted.font_size);
 
                 font.render_text(
-                    ext.prompt,
-                    ext.font_size,
+                    &state.extracted.prompt,
+                    state.extracted.font_size,
                     index,
-                    &ext.prompt_color,
+                    &state.extracted.prompt_color,
                     buffer,
                     height,
                     width,
@@ -218,15 +236,15 @@ fn main() -> anyhow::Result<()> {
             {
                 // Current Input
                 let mut extra = false;
-                let mut input = state.inp.input.clone();
+                let mut input = state.inp.input().to_owned();
 
-                let mut size = font.text_width(&input, ext.font_size);
+                let mut size = font.text_width(&input, state.extracted.font_size);
                 if size >= width / 4 {
                     let mut truncated = String::new();
 
-                    for c in state.inp.input.chars() {
+                    for c in state.inp.input().chars() {
                         let next = format!("{}...", truncated.clone() + &c.to_string());
-                        if font.text_width(&next, ext.font_size) >= width / 4 {
+                        if font.text_width(&next, state.extracted.font_size) >= width / 4 {
                             extra = true;
                             break;
                         }
@@ -234,14 +252,14 @@ fn main() -> anyhow::Result<()> {
                     }
 
                     input = truncated;
-                    size = font.text_width(&input, ext.font_size);
+                    size = font.text_width(&input, state.extracted.font_size);
                 }
 
                 font.render_text(
                     &input,
-                    ext.font_size,
+                    state.extracted.font_size,
                     index,
-                    &ext.input_color,
+                    &state.extracted.input_color,
                     buffer,
                     height,
                     width,
@@ -252,39 +270,40 @@ fn main() -> anyhow::Result<()> {
                 if extra {
                     font.render_text(
                         "...",
-                        ext.font_size,
+                        state.extracted.font_size,
                         index,
-                        &ext.extra_text_color,
+                        &state.extracted.extra_text_color,
                         buffer,
                         height,
                         width,
                     );
 
-                    index += font.text_width("...", ext.font_size);
+                    index += font.text_width("...", state.extracted.font_size);
                 }
             }
 
-            if index + ext.bin_start_offset < ext.default_bin_start_x {
-                index = ext.default_bin_start_x;
+            if index + state.extracted.bin_start_offset < state.extracted.default_bin_start_x {
+                index = state.extracted.default_bin_start_x;
             } else {
-                index += ext.bin_start_offset;
+                index += state.extracted.bin_start_offset;
             }
 
             {
                 // Start Arrow
-                let arrow = if state.inp.selected_index == 0 {
-                    ext.start_arrow
+                let arrow = if state.inp.selected_index() == 0 {
+                    &state.extracted.start_arrow
                 } else {
-                    ext.start_arrow_more
+                    &state.extracted.start_arrow_more
                 };
 
-                let size = font.text_width(arrow, ext.font_size) + ext.arrow_margin;
+                let size = font.text_width(arrow, state.extracted.font_size)
+                    + state.extracted.arrow_margin;
 
                 font.render_text(
                     arrow,
-                    ext.font_size,
+                    state.extracted.font_size,
                     index,
-                    &ext.arrow_color,
+                    &state.extracted.arrow_color,
                     buffer,
                     height,
                     width,
@@ -295,18 +314,19 @@ fn main() -> anyhow::Result<()> {
             // Packages
             let mut all_bins_shown = true;
             let end_arrow_size = u32::max(
-                font.text_width(ext.end_arrow, ext.font_size),
-                font.text_width(ext.end_arrow_more, ext.font_size),
-            ) + ext.end_margin;
+                font.text_width(&state.extracted.end_arrow, state.extracted.font_size),
+                font.text_width(&state.extracted.end_arrow_more, state.extracted.font_size),
+            ) + state.extracted.end_margin;
 
             for (i, bin) in state
                 .inp
-                .filtered_bins
+                .filtered_bins()
                 .iter()
                 .enumerate()
-                .skip(state.inp.selected_index as usize)
+                .skip(state.inp.selected_index() as usize)
             {
-                let size = font.text_width(bin, ext.font_size) + ext.text_margin;
+                let size =
+                    font.text_width(bin, state.extracted.font_size) + state.extracted.text_margin;
                 if (index + size) > width - end_arrow_size {
                     all_bins_shown = false;
                     break;
@@ -314,12 +334,12 @@ fn main() -> anyhow::Result<()> {
 
                 font.render_text(
                     bin,
-                    ext.font_size,
+                    state.extracted.font_size,
                     index,
-                    if i == state.inp.selected_index as usize {
-                        &ext.selected_color
+                    if i == state.inp.selected_index() as usize {
+                        &state.extracted.selected_color
                     } else {
-                        &ext.item_color
+                        &state.extracted.item_color
                     },
                     buffer,
                     height,
@@ -332,16 +352,17 @@ fn main() -> anyhow::Result<()> {
             {
                 // End Arrow
                 let arrow = if all_bins_shown {
-                    ext.end_arrow
+                    &state.extracted.end_arrow
                 } else {
-                    ext.end_arrow_more
+                    &state.extracted.end_arrow_more
                 };
-                let size = font.text_width(arrow, ext.font_size) + ext.end_margin;
+                let size =
+                    font.text_width(arrow, state.extracted.font_size) + state.extracted.end_margin;
                 font.render_text(
                     arrow,
-                    ext.font_size,
+                    state.extracted.font_size,
                     if all_bins_shown { index } else { width - size },
-                    &ext.arrow_color,
+                    &state.extracted.arrow_color,
                     buffer,
                     height,
                     width,
@@ -361,13 +382,11 @@ fn main() -> anyhow::Result<()> {
             surface.attach(Some(&buffer), 0, 0);
             surface.damage(0, 0, width as i32, height as i32);
 
-            if !surface_attached {
-                surface_attached = true;
-            }
-
             surface.frame(&qh, ());
 
             surface.commit();
+
+            state.inp.dirty = false;
             frame += 1;
         };
 
