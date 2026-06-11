@@ -27,6 +27,8 @@ use crate::{appdata::AppData, cli::Cli};
 static COLOR_FORMAT: wl_shm::Format = wl_shm::Format::Argb8888;
 static COLOR_SIZE: u32 = 4;
 
+static NAME: &str = "kymenu";
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
@@ -35,19 +37,19 @@ fn main() -> anyhow::Result<()> {
             cli::Commands::GenerateZshCompletion => clap_complete::generate(
                 clap_complete::shells::Zsh,
                 &mut Cli::command(),
-                "kymenu",
+                NAME,
                 &mut io::stdout(),
             ),
             cli::Commands::GenerateFishCompletion => clap_complete::generate(
                 clap_complete::shells::Fish,
                 &mut Cli::command(),
-                "kymenu",
+                NAME,
                 &mut io::stdout(),
             ),
             cli::Commands::GenerateBashCompletion => clap_complete::generate(
                 clap_complete::shells::Bash,
                 &mut Cli::command(),
-                "kymenu",
+                NAME,
                 &mut io::stdout(),
             ),
         };
@@ -90,7 +92,7 @@ fn main() -> anyhow::Result<()> {
         &surface,
         None,
         zwlr_layer_shell_v1::Layer::Overlay,
-        "my_layer".into(),
+        NAME.to_string(),
         &qh,
         (),
     );
