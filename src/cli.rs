@@ -104,6 +104,8 @@ pub struct Extracted {
 
 impl Cli {
     pub fn extract(&self) -> Extracted {
+        let prompt = self.prompt.as_deref().unwrap_or(">>").to_string();
+
         Extracted {
             // General
             font_family: self
@@ -113,7 +115,7 @@ impl Cli {
                 .to_string(),
             font_style: self.font_style.as_deref().map(|x| x.to_string()),
             height: self.height.unwrap_or(20),
-            prompt: self.prompt.as_deref().unwrap_or(">> ").to_string(),
+            prompt: format!("{prompt} "),
             end_arrow: self.end_arrow.as_deref().unwrap_or(">").to_string(),
             end_arrow_more: self.end_arrow_more.as_deref().unwrap_or(">>").to_string(),
             start_arrow: self.start_arrow.as_deref().unwrap_or("<").to_string(),

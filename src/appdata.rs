@@ -407,7 +407,7 @@ impl AppData {
                     println!("{}", serde_json::to_string(&result).unwrap());
                     std::process::exit(0)
                 } else {
-                    println!("{}", result.raw);
+                    println!("{}", result.raw.as_str().unwrap_or_default());
                     std::process::exit(0)
                 }
             }
