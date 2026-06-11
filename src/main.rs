@@ -313,10 +313,14 @@ fn main() -> anyhow::Result<()> {
 
             // Packages
             let mut all_bins_shown = true;
-            let end_arrow_size = u32::max(
-                font.text_width(&state.extracted.end_arrow, state.extracted.font_size),
-                font.text_width(&state.extracted.end_arrow_more, state.extracted.font_size),
-            ) + state.extracted.end_margin;
+
+            let end_arrow_size = font
+                .text_width(&state.extracted.end_arrow, state.extracted.font_size)
+                + state.extracted.end_margin;
+
+            let end_arrow_size_more = font
+                .text_width(&state.extracted.end_arrow_more, state.extracted.font_size)
+                + state.extracted.end_margin;
 
             for (i, bin) in state
                 .inp
@@ -327,7 +331,17 @@ fn main() -> anyhow::Result<()> {
             {
                 let size =
                     font.text_width(bin, state.extracted.font_size) + state.extracted.text_margin;
-                if (index + size) > width - end_arrow_size {
+
+                let last = i == state.inp.filtered_bins().len() - 1;
+
+                if (index + size)
+                    > width
+                        - if last {
+                            end_arrow_size
+                        } else {
+                            end_arrow_size_more
+                        }
+                {
                     all_bins_shown = false;
                     break;
                 }
@@ -356,8 +370,10 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     &state.extracted.end_arrow_more
                 };
+
                 let size =
                     font.text_width(arrow, state.extracted.font_size) + state.extracted.end_margin;
+
                 font.render_text(
                     arrow,
                     state.extracted.font_size,
