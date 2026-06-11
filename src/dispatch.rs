@@ -178,26 +178,30 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
 }
 
 macro_rules! impl_dispatch {
-    ($proxy:ty) => {
-        impl wayland_client::Dispatch<$proxy, ()> for AppData {
-            fn event(
-                _state: &mut Self,
-                _proxy: &$proxy,
-                _event: <$proxy as wayland_client::Proxy>::Event,
-                _data: &(),
-                _conn: &Connection,
-                _qhandle: &wayland_client::QueueHandle<Self>,
-            ) {
+    ($($proxy:ty),+ $(,)?) => {
+        $(
+            impl wayland_client::Dispatch<$proxy, ()> for AppData {
+                fn event(
+                    _state: &mut Self,
+                    _proxy: &$proxy,
+                    _event: <$proxy as wayland_client::Proxy>::Event,
+                    _data: &(),
+                    _conn: &Connection,
+                    _qhandle: &wayland_client::QueueHandle<Self>,
+                ) {
+                }
             }
-        }
+        )+
     };
 }
 
-impl_dispatch!(zwlr_layer_shell_v1::ZwlrLayerShellV1);
-impl_dispatch!(wl_compositor::WlCompositor);
-impl_dispatch!(wl_shm_pool::WlShmPool);
-impl_dispatch!(wl_display::WlDisplay);
-impl_dispatch!(wl_surface::WlSurface);
-impl_dispatch!(wl_buffer::WlBuffer);
-impl_dispatch!(wl_seat::WlSeat);
-impl_dispatch!(wl_shm::WlShm);
+impl_dispatch!(
+    zwlr_layer_shell_v1::ZwlrLayerShellV1,
+    wl_compositor::WlCompositor,
+    wl_shm_pool::WlShmPool,
+    wl_display::WlDisplay,
+    wl_surface::WlSurface,
+    wl_buffer::WlBuffer,
+    wl_seat::WlSeat,
+    wl_shm::WlShm
+);
