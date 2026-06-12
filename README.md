@@ -1,7 +1,24 @@
-# kymenu
+**kymenu** — minimal Wayland overlay menu/launcher
 
-A status bar inspired by dmenu written in rust for wayland
+A tiny, fast, dependency-light dmenu-style launcher for wlroots compositors.
 
-## Demo
+### Features
+- Pure Wayland (layer-shell)
+- Built-in path launcher (`--path-launcher`)
+- JSON input/output support
+- Customizable colors, fonts, arrows, margins
 
-[Watch demo](./assets/demo.mp4)
+### Quick Start
+
+```bash
+# Pipe items
+echo "hi\nthere" | kymenu
+
+# Path launcher
+kymenu --path-launcher
+
+# Custom styling
+kymenu --background-color "#1e1e2e" --prompt "Run: " --font-size 18 --path-launcher
+```
+
+Simple, hackable, and works great on sway/hyprland.
