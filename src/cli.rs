@@ -122,7 +122,7 @@ impl Cli {
             start_arrow_more: self.start_arrow_more.as_deref().unwrap_or("<<").to_string(),
             end_margin: self.end_margin.unwrap_or(0),
             start_margin: self.start_margin.unwrap_or(0),
-            text_margin: self.text_margin.unwrap_or(5),
+            text_margin: self.text_margin.unwrap_or(15),
             arrow_margin: self.arrow_margin.unwrap_or(8),
             font_size: self.font_size.unwrap_or(16.0),
             default_bin_start_x: self.default_bin_start.unwrap_or(200),
