@@ -58,7 +58,7 @@ let
 
   checks = {
     inherit kymenu;
-    webhook-router-clippy = craneLib.cargoClippy (
+    kymenu-clippy = craneLib.cargoClippy (
       commonArgs
       // {
         inherit cargoArtifacts;
