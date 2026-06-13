@@ -389,39 +389,49 @@ impl AppData {
 
         let sym = xkb.0.key_get_one_sym(key);
 
-        match sym.into() {
-            keysyms::KEY_Return => {
-                let result = self
-                    .inp
-                    .filtered_inputs()
-                    .get(self.inp.selected_index as usize)
-                    .unwrap()
-                    .clone();
+        let execute = |index: usize| {
+            let result = self.inp.filtered_inputs().get(index).unwrap().clone();
 
-                if let serde_json::Value::String(ref raw) = result.raw
-                    && self.extracted.path_launcher
-                {
-                    let _ = Command::new(raw).exec();
-                    std::process::exit(1)
-                } else if self.extracted.json_out {
-                    println!("{}", serde_json::to_string(&result).unwrap());
-                    std::process::exit(0)
-                } else {
-                    match result.raw {
-                        serde_json::Value::String(ref s) => println!("{s}"),
-                        _ => println!("{}", result.raw),
-                    };
-                    std::process::exit(0)
-                }
+            if let serde_json::Value::String(ref raw) = result.raw
+                && self.extracted.path_launcher
+            {
+                let _ = Command::new(raw).exec();
+                std::process::exit(1)
+            } else if self.extracted.json_out {
+                println!("{}", serde_json::to_string(&result).unwrap());
+                std::process::exit(0)
+            } else {
+                match result.raw {
+                    serde_json::Value::String(ref s) => println!("{s}"),
+                    _ => println!("{}", result.raw),
+                };
+                std::process::exit(0)
             }
+        };
+
+        match sym.into() {
+            keysyms::KEY_Return => execute(self.inp.selected_index() as usize),
             keysyms::KEY_BackSpace => self.inp.pop(),
             keysyms::KEY_Escape => std::process::exit(0),
             keysyms::KEY_Right => self.inp.move_right(),
             keysyms::KEY_Left => self.inp.move_left(),
 
-            _ => self
-                .inp
-                .push(&self.xkb.as_ref().unwrap().0.key_get_utf8(key)),
+            _ => {
+                let xkb_state = &self.xkb.as_ref().unwrap().0;
+
+                let alt_pressed = xkb_state.mod_name_is_active("Mod1", xkb::STATE_MODS_EFFECTIVE);
+
+                let s = xkb_state.key_get_utf8(key);
+
+                if alt_pressed && let Ok(digit) = s.parse::<u8>() {
+                    let mapped = if digit == 0 { 9 } else { digit - 1 };
+
+                    execute(self.inp.selected_index() as usize + mapped as usize)
+                } else {
+                    self.inp
+                        .push(&self.xkb.as_ref().unwrap().0.key_get_utf8(key));
+                }
+            }
         }
     }
 }
