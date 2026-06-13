@@ -2,15 +2,15 @@ mod appdata;
 mod cli;
 mod color;
 mod dispatch;
+mod extracted;
 mod font;
 
 use std::{
-    io,
     os::fd::{AsRawFd, BorrowedFd},
     time::{Duration, Instant},
 };
 
-use clap::{CommandFactory, Parser};
+use clap::Parser;
 use memmap2::Mmap;
 use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
@@ -29,39 +29,13 @@ use crate::{
 static COLOR_FORMAT: wl_shm::Format = wl_shm::Format::Argb8888;
 static COLOR_SIZE: u32 = 4;
 
-static NAME: &str = "kymenu";
+pub static NAME: &str = "kymenu";
 
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().init();
 
-    let cli = Cli::parse();
-
-    if let Some(cmd) = cli.command {
-        match cmd {
-            cli::Commands::GenerateZshCompletion => clap_complete::generate(
-                clap_complete::shells::Zsh,
-                &mut Cli::command(),
-                NAME,
-                &mut io::stdout(),
-            ),
-            cli::Commands::GenerateFishCompletion => clap_complete::generate(
-                clap_complete::shells::Fish,
-                &mut Cli::command(),
-                NAME,
-                &mut io::stdout(),
-            ),
-            cli::Commands::GenerateBashCompletion => clap_complete::generate(
-                clap_complete::shells::Bash,
-                &mut Cli::command(),
-                NAME,
-                &mut io::stdout(),
-            ),
-        };
-        std::process::exit(0);
-    };
-
     let mut state = {
-        let extracted = cli.extract();
+        let extracted = Cli::parse().extract();
 
         let inputs = InputItems::new(&extracted);
 
@@ -290,10 +264,10 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            if index + state.extracted.bin_start_offset < state.extracted.default_bin_start_x {
+            if index + state.extracted.bin_start_margin < state.extracted.default_bin_start_x {
                 index = state.extracted.default_bin_start_x;
             } else {
-                index += state.extracted.bin_start_offset;
+                index += state.extracted.bin_start_margin;
             }
 
             {

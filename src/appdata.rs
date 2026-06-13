@@ -18,7 +18,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xkbcommon::xkb::{self, keysyms};
 use xkeysym::KeyCode;
 
-use crate::cli::Extracted;
+use crate::extracted::Extracted;
 
 #[derive(Default, Debug)]
 pub struct WaylandGlobals {

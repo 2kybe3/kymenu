@@ -34,23 +34,33 @@ let
 
   cargoArtifacts = craneLib.buildDepsOnly commonArgs;
 
+  outPath = crate: "target/*/build/*/out";
+
+  installCompletionsForCrate = crate: ''
+    installShellCompletion --cmd ${crate} \
+        --nushell ${outPath crate}/completions/${crate}.elv \
+        --bash ${outPath crate}/completions/${crate}.bash \
+        --fish ${outPath crate}/completions/${crate}.fish \
+        --zsh  ${outPath crate}/completions/_${crate}
+  '';
+
+  installManPagesForCrate = crate: ''
+    installManPage ${outPath crate}/man/*
+  '';
+
   kymenu = craneLib.buildPackage (
     commonArgs
     // {
       inherit cargoArtifacts;
 
-      nativeBuildInputs =
-        commonArgs.nativeBuildInputs
-        ++ (with pkgs; [
-          installShellFiles
-        ]);
+      nativeBuildInputs = commonArgs.nativeBuildInputs ++ [
+        pkgs.installShellFiles
+      ];
 
-      postInstall = ''
-        installShellCompletion --cmd kymenu \
-          --bash <($out/bin/kymenu generate-bash-completion) \
-          --fish <($out/bin/kymenu generate-fish-completion) \
-          --zsh <($out/bin/kymenu generate-zsh-completion)
-      '';
+      postInstall = toString [
+        (installManPagesForCrate "kymenu")
+        (installCompletionsForCrate "kymenu")
+      ];
 
       meta.mainProgram = "kymenu";
     }

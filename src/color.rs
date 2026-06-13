@@ -1,9 +1,25 @@
-#[derive(Debug)]
+use std::{fmt::Display, str::FromStr};
+
+#[derive(Debug, Clone)]
 pub struct Color {
     pub r: u8,
     pub b: u8,
     pub g: u8,
     pub a: u8,
+}
+
+impl FromStr for Color {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Color::hex(s)
+    }
+}
+
+impl Display for Color {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.to_hex())
+    }
 }
 
 impl Color {
@@ -32,7 +48,8 @@ impl Color {
         Self { r, g, b, a }
     }
 
-    pub fn hex(hex: &str) -> Self {
+    // TODO: better error handling
+    pub fn hex(hex: &str) -> anyhow::Result<Self> {
         let hex = match hex.strip_prefix('#') {
             Some(v) => v,
             None => hex,
@@ -47,9 +64,14 @@ impl Color {
         } else {
             255
         };
-        Self { r, g, b, a }
+        Ok(Self { r, g, b, a })
     }
 
+    pub fn to_hex(&self) -> String {
+        format!("#{:02X}{:02X}{:02X}{:02X}", self.r, self.g, self.b, self.a)
+    }
+
+    #[allow(unused)]
     pub const fn get_bgra(&self) -> [u8; 4] {
         [self.b, self.g, self.r, self.a]
     }

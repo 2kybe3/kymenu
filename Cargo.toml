@@ -1,5 +1,6 @@
 [package]
 name = "kymenu"
+description = "minimal Wayland overlay menu/launcher"
 version = "0.3.0"
 edition = "2024"
 
@@ -8,7 +9,6 @@ ab_glyph = "0.2.32"
 anyhow = "1.0.102"
 bytemuck = "1.25.0"
 clap = { version = "4.6.1", features = ["derive"] }
-clap_complete = "4.6.5"
 fontconfig = "0.10.2"
 memfd = "0.6.5"
 memmap2 = "0.9.10"
@@ -20,3 +20,9 @@ wayland-client = "0.31.14"
 wayland-protocols-wlr = { version = "0.3.12", features = ["client"] }
 xkbcommon = "0.9.0"
 xkeysym = "0.2.1"
+
+[build-dependencies]
+anyhow = "1.0.102"
+clap = { version = "4.6.1", features = ["derive"] }
+clap_complete = "4.6.5"
+clap_mangen = "0.3.0"
