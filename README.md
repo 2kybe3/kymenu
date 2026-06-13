@@ -27,6 +27,4 @@ See [kymenu-extras](https://git.kybe.xyz/2kybe3/kymenu-extras) for helpers and u
 
 ### Demo
 
-<video controls>
-  <source src="assets/demo.mp4" type="video/mp4">
-</video>
+![demo](./assets/demo.mp4)
