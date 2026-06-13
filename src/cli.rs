@@ -1,4 +1,4 @@
-use clap::Parser;
+use clap::{ArgAction, Parser};
 
 use crate::color::Color;
 
@@ -67,12 +67,31 @@ pub struct Cli {
     pub(crate) bin_start_margin: u32,
     #[arg(
         long,
+        num_args = 0..=1,
+        require_equals = true,
+        action = ArgAction::Set,
+        default_missing_value = "true",
+        default_value_t = false,
         help = "Lists all bins installed and launches the one you select"
     )]
     pub(crate) path_launcher: bool,
-    #[arg(long)]
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        action = ArgAction::Set,
+        default_value_t = false,
+        default_missing_value = "true",
+    )]
     pub(crate) json_out: bool,
-    #[arg(long)]
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        action = ArgAction::Set,
+        default_value_t = false,
+        default_missing_value = "true",
+    )]
     pub(crate) json_in: bool,
 
     // Colors
