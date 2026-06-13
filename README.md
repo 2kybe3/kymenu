@@ -2,6 +2,8 @@
 
 A tiny, fast, dependency-light dmenu-style launcher for wlroots compositors.
 
+### ![Demo](./assets/demo.mp4)
+
 ### Features
 - Pure Wayland (layer-shell)
 - Built-in path launcher (`--path-launcher`)
@@ -24,7 +26,3 @@ kymenu --background-color "#1e1e2e" --prompt "Run: " --font-size 18 --path-launc
 ### Extras
 
 See [kymenu-extras](https://git.kybe.xyz/2kybe3/kymenu-extras) for helpers and usage examples.
-
-### Demo
-
-![demo](./assets/demo.mp4)
