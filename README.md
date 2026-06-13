@@ -24,3 +24,9 @@ kymenu --background-color "#1e1e2e" --prompt "Run: " --font-size 18 --path-launc
 ### Extras
 
 See [kymenu-extras](https://git.kybe.xyz/2kybe3/kymenu-extras) for helpers and usage examples.
+
+### Demo
+
+<video controls>
+  <source src="assets/demo.mp4" type="video/mp4">
+</video>
