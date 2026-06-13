@@ -21,4 +21,6 @@ kymenu --path-launcher
 kymenu --background-color "#1e1e2e" --prompt "Run: " --font-size 18 --path-launcher
 ```
 
-Simple, hackable, and works great on sway/hyprland.
+### Extras
+
+See [kymenu-extras](https://git.kybe.xyz/2kybe3/kymenu-extras) for helpers and usage examples.
