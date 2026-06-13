@@ -93,6 +93,16 @@ pub struct Cli {
         default_missing_value = "true",
     )]
     pub(crate) json_in: bool,
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        action = ArgAction::Set,
+        default_value_t = false,
+        default_missing_value = "true",
+        help = "Show only the input prompt and return the input after pressing enter"
+    )]
+    pub(crate) input: bool,
 
     // Colors
     #[arg(long, default_value_t = Color::DEFAULT_ITEM_COLOR)]

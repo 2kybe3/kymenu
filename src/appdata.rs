@@ -93,7 +93,9 @@ pub struct InputItems(pub Vec<InputItem>);
 
 impl InputItems {
     pub fn new(extracted: &Extracted) -> Self {
-        if extracted.path_launcher {
+        if extracted.input {
+            Self(vec![])
+        } else if extracted.path_launcher {
             Self::from_path()
         } else if extracted.json_in {
             Self::from_json_in()
@@ -390,6 +392,11 @@ impl AppData {
         let sym = xkb.0.key_get_one_sym(key);
 
         let execute = |index: usize| {
+            if self.extracted.input {
+                println!("{}", self.inp.input);
+                std::process::exit(0)
+            }
+
             let result = self.inp.filtered_inputs().get(index).unwrap().clone();
 
             if let serde_json::Value::String(ref raw) = result.raw

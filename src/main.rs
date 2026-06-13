@@ -220,13 +220,20 @@ fn main() -> anyhow::Result<()> {
                 let mut extra = false;
                 let mut input = state.inp.input().to_owned();
 
+                let check_width = if state.extracted.input {
+                    width
+                } else {
+                    width / 4
+                };
+
                 let mut size = font.text_width(&input, state.extracted.font_size);
-                if size >= width / 4 {
+                if index + size >= check_width {
                     let mut truncated = String::new();
 
                     for c in state.inp.input().chars() {
                         let next = format!("{}...", truncated.clone() + &c.to_string());
-                        if font.text_width(&next, state.extracted.font_size) >= width / 4 {
+                        if font.text_width(&next, state.extracted.font_size) + index >= check_width
+                        {
                             extra = true;
                             break;
                         }
@@ -264,111 +271,113 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            if index + state.extracted.bin_start_margin < state.extracted.default_bin_start_x {
-                index = state.extracted.default_bin_start_x;
-            } else {
-                index += state.extracted.bin_start_margin;
-            }
-
-            {
-                // Start Arrow
-                let arrow = if state.inp.selected_index() == 0 {
-                    &state.extracted.start_arrow
+            if !state.extracted.input {
+                if index + state.extracted.bin_start_margin < state.extracted.default_bin_start_x {
+                    index = state.extracted.default_bin_start_x;
                 } else {
-                    &state.extracted.start_arrow_more
-                };
-
-                let size = font.text_width(arrow, state.extracted.font_size)
-                    + state.extracted.arrow_margin;
-
-                font.render_text(
-                    arrow,
-                    state.extracted.font_size,
-                    index,
-                    &state.extracted.arrow_color,
-                    buffer,
-                    height,
-                    width,
-                );
-                index += size;
-            }
-
-            // Packages
-            let mut all_bins_shown = true;
-
-            let end_arrow_size = font
-                .text_width(&state.extracted.end_arrow, state.extracted.font_size)
-                + state.extracted.end_margin;
-
-            let end_arrow_size_more = font
-                .text_width(&state.extracted.end_arrow_more, state.extracted.font_size)
-                + state.extracted.end_margin;
-
-            for (i, bin) in state
-                .inp
-                .filtered_inputs()
-                .iter()
-                .enumerate()
-                .skip(state.inp.selected_index() as usize)
-            {
-                let last = i == state.inp.filtered_inputs().len() - 1;
-
-                let size = font.text_width(bin.display(), state.extracted.font_size)
-                    + if last {
-                        state.extracted.arrow_margin
-                    } else {
-                        state.extracted.text_margin
-                    };
-
-                if (index + size)
-                    > width
-                        - if last {
-                            end_arrow_size
-                        } else {
-                            end_arrow_size_more
-                        }
-                {
-                    all_bins_shown = false;
-                    break;
+                    index += state.extracted.bin_start_margin;
                 }
 
-                font.render_text(
-                    bin.display(),
-                    state.extracted.font_size,
-                    index,
-                    if i == state.inp.selected_index() as usize {
-                        &state.extracted.selected_color
+                {
+                    // Start Arrow
+                    let arrow = if state.inp.selected_index() == 0 {
+                        &state.extracted.start_arrow
                     } else {
-                        &state.extracted.item_color
-                    },
-                    buffer,
-                    height,
-                    width,
-                );
+                        &state.extracted.start_arrow_more
+                    };
 
-                index += size;
-            }
+                    let size = font.text_width(arrow, state.extracted.font_size)
+                        + state.extracted.arrow_margin;
 
-            {
-                // End Arrow
-                let arrow = if all_bins_shown {
-                    &state.extracted.end_arrow
-                } else {
-                    &state.extracted.end_arrow_more
-                };
+                    font.render_text(
+                        arrow,
+                        state.extracted.font_size,
+                        index,
+                        &state.extracted.arrow_color,
+                        buffer,
+                        height,
+                        width,
+                    );
+                    index += size;
+                }
 
-                let size =
-                    font.text_width(arrow, state.extracted.font_size) + state.extracted.end_margin;
+                // Packages
+                let mut all_bins_shown = true;
 
-                font.render_text(
-                    arrow,
-                    state.extracted.font_size,
-                    if all_bins_shown { index } else { width - size },
-                    &state.extracted.arrow_color,
-                    buffer,
-                    height,
-                    width,
-                );
+                let end_arrow_size = font
+                    .text_width(&state.extracted.end_arrow, state.extracted.font_size)
+                    + state.extracted.end_margin;
+
+                let end_arrow_size_more = font
+                    .text_width(&state.extracted.end_arrow_more, state.extracted.font_size)
+                    + state.extracted.end_margin;
+
+                for (i, bin) in state
+                    .inp
+                    .filtered_inputs()
+                    .iter()
+                    .enumerate()
+                    .skip(state.inp.selected_index() as usize)
+                {
+                    let last = i == state.inp.filtered_inputs().len() - 1;
+
+                    let size = font.text_width(bin.display(), state.extracted.font_size)
+                        + if last {
+                            state.extracted.arrow_margin
+                        } else {
+                            state.extracted.text_margin
+                        };
+
+                    if (index + size)
+                        > width
+                            - if last {
+                                end_arrow_size
+                            } else {
+                                end_arrow_size_more
+                            }
+                    {
+                        all_bins_shown = false;
+                        break;
+                    }
+
+                    font.render_text(
+                        bin.display(),
+                        state.extracted.font_size,
+                        index,
+                        if i == state.inp.selected_index() as usize {
+                            &state.extracted.selected_color
+                        } else {
+                            &state.extracted.item_color
+                        },
+                        buffer,
+                        height,
+                        width,
+                    );
+
+                    index += size;
+                }
+
+                {
+                    // End Arrow
+                    let arrow = if all_bins_shown {
+                        &state.extracted.end_arrow
+                    } else {
+                        &state.extracted.end_arrow_more
+                    };
+
+                    let size = font.text_width(arrow, state.extracted.font_size)
+                        + state.extracted.end_margin;
+
+                    font.render_text(
+                        arrow,
+                        state.extracted.font_size,
+                        if all_bins_shown { index } else { width - size },
+                        &state.extracted.arrow_color,
+                        buffer,
+                        height,
+                        width,
+                    );
+                }
             }
 
             let buffer = pool.create_buffer(

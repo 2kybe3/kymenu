@@ -21,6 +21,7 @@ pub struct Extracted {
     pub path_launcher: bool,
     pub json_out: bool,
     pub json_in: bool,
+    pub input: bool,
 
     // Colors
     pub item_color: Color,
@@ -54,6 +55,7 @@ impl Cli {
             path_launcher: self.path_launcher,
             json_out: self.json_out,
             json_in: self.json_in,
+            input: self.input,
 
             // Colors
             item_color: self.item_color,
