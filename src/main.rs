@@ -15,7 +15,7 @@ use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
-    appdata::{AppData, InputItems},
+    appdata::{AppData, Buffer, InputItems},
     cli::Cli,
 };
 
@@ -93,16 +93,15 @@ fn main() -> anyhow::Result<()> {
     surface.commit();
 
     // Wait for output to be set from wayland event from the layered_surface
-    loop {
+    let output = loop {
         event_queue.roundtrip(&mut state)?;
 
-        if state.output.is_some() {
-            break;
+        if let Some(output) = state.output.as_ref() {
+            break output;
         }
-    }
+    };
 
     let pool = {
-        let output = state.output.as_ref().unwrap();
         let size = (output.width * output.height * COLOR_SIZE) as usize;
         let pool_size = size * 2;
 
@@ -119,8 +118,7 @@ fn main() -> anyhow::Result<()> {
             (),
         );
 
-        state.buffer_memfd = Some(fd);
-        state.buffer_mmap = Some(mmap);
+        state.buffer = Some(Buffer::new(fd, mmap));
 
         pool
     };
@@ -166,25 +164,29 @@ fn main() -> anyhow::Result<()> {
         }
 
         if state.configured && state.inp.dirty {
-            let output = state.output.as_ref().unwrap();
+            let Some(output) = state.output.as_ref() else {
+                tracing::error!("warning somehow got unset. this is an bug!");
+                std::process::exit(1);
+            };
+
             let width = output.width;
             let height = output.height;
 
             let size = (width * height * COLOR_SIZE) as usize;
             let buffer_size = size * 2;
 
-            state
-                .buffer_memfd
-                .as_mut()
-                .unwrap()
-                .as_file()
-                .set_len(buffer_size as u64)?;
+            let Some(state_buffer) = &mut state.buffer else {
+                tracing::error!("state_buffer somehow got unset. this is an bug!");
+                std::process::exit(1);
+            };
+
+            state_buffer.memfd.as_file().set_len(buffer_size as u64)?;
 
             let size = (width * height * COLOR_SIZE) as usize;
 
             // We swap between 2 buffers because 1 is in use by swayland and should not be used
             let offset = (frame % 2) * size;
-            let buffer = &mut state.buffer_mmap.as_mut().unwrap()[offset..offset + size];
+            let buffer = &mut state_buffer.mmap[offset..offset + size];
 
             // Background
             let bgra = u32::from_le_bytes(state.cli.background_color.get_bgra());
@@ -390,7 +392,17 @@ fn main() -> anyhow::Result<()> {
 
         event_queue.flush()?;
 
-        let _ = conn.prepare_read().unwrap().read().ok();
+        // This call will not block, but may return [`None`] if the inner queue of the backend needs to be dispatched.
+        let prep_read = match conn.prepare_read() {
+            Some(v) => v,
+            None => {
+                tracing::warn!("prep_read returned smth");
+                event_queue.dispatch_pending(&mut state)?;
+                continue;
+            }
+        };
+
+        let _ = prep_read.read().ok();
 
         event_queue.dispatch_pending(&mut state)?;
     }

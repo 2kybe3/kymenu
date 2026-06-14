@@ -1,5 +1,7 @@
 use std::{fmt::Display, str::FromStr};
 
+use anyhow::Context;
+
 #[derive(Debug, Clone)]
 pub struct Color {
     pub r: u8,
@@ -48,19 +50,19 @@ impl Color {
         Self { r, g, b, a }
     }
 
-    // TODO: better error handling
     pub fn hex(hex: &str) -> anyhow::Result<Self> {
-        let hex = match hex.strip_prefix('#') {
-            Some(v) => v,
-            None => hex,
-        }
-        .trim();
+        let hex = hex.strip_prefix('#').unwrap_or(hex).trim();
 
-        let r = u8::from_str_radix(&hex[0..2], 16).unwrap();
-        let g = u8::from_str_radix(&hex[2..4], 16).unwrap();
-        let b = u8::from_str_radix(&hex[4..6], 16).unwrap();
+        match hex.len() {
+            6 | 8 => {}
+            len => anyhow::bail!("invalid hex color length: expected 6 or 8 characters, got {len}"),
+        }
+
+        let r = u8::from_str_radix(&hex[0..2], 16).context("invalid red component")?;
+        let g = u8::from_str_radix(&hex[2..4], 16).context("invalid green component")?;
+        let b = u8::from_str_radix(&hex[4..6], 16).context("invalid blue component")?;
         let a = if hex.len() == 8 {
-            u8::from_str_radix(&hex[6..8], 16).unwrap()
+            u8::from_str_radix(&hex[6..8], 16).context("invalid alpha component")?
         } else {
             255
         };

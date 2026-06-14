@@ -96,48 +96,80 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
     ) {
         match event {
             wl_keyboard::Event::Keymap { format, fd, size } => {
+                // No Keymap is a fatal error so we prefer to exit here
                 let format = match format {
                     WEnum::Value(v) => v,
-                    WEnum::Unknown(_) => panic!("Unsupported keymap format"),
+                    WEnum::Unknown(e) => {
+                        tracing::error!("Unsupported keymap format '{format:?}': {e}");
+                        std::process::exit(1);
+                    }
                 };
                 if format != wl_keyboard::KeymapFormat::XkbV1 {
-                    panic!("Unsupported keymap format")
+                    tracing::error!("Unsupported keymap format '{format:?}'");
+                    std::process::exit(1);
                 }
 
-                let mmap = unsafe { Mmap::map(&fd).unwrap() };
+                let mmap = match unsafe { Mmap::map(&fd) } {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!(
+                            "failed to open keymap file given from the compositor: {e}"
+                        );
+                        std::process::exit(1);
+                    }
+                };
 
-                let keymap_string =
-                    std::str::from_utf8(&mmap[..size as usize]).expect("keymap is not valid utf-8");
+                let keymap_string = match std::str::from_utf8(&mmap[..size as usize]) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::error!(
+                            "keymap provided from the compositor is not valid utf-8: {e}"
+                        );
+                        std::process::exit(1);
+                    }
+                };
 
                 let context = xkb::Context::new(xkb::CONTEXT_NO_FLAGS);
 
-                let keymap = xkb::Keymap::new_from_string(
+                let keymap = match xkb::Keymap::new_from_string(
                     &context,
                     keymap_string.to_owned(),
                     xkb::KEYMAP_FORMAT_TEXT_V1,
                     xkb::COMPILE_NO_FLAGS,
-                )
-                .expect("failed to create keymap");
+                ) {
+                    Some(v) => v,
+                    None => {
+                        tracing::error!("failed to create xkb Keymap");
+                        std::process::exit(1);
+                    }
+                };
 
                 let state = xkb::State::new(&keymap);
 
                 crate_state.xkb = Some(crate::appdata::Xkb(state))
             }
             wl_keyboard::Event::Key { key, state, .. } => {
+                let Some(repeat_state) = &mut crate_state.repeat else {
+                    tracing::warn!(
+                        "received a key event even tho the compositor didn't set the repeat rate yet"
+                    );
+                    return;
+                };
+
                 let state = match state {
                     WEnum::Value(v) => v,
-                    WEnum::Unknown(_) => unreachable!(),
+                    WEnum::Unknown(e) => {
+                        tracing::error!("Unsupported key state '{state:?}': {e}");
+                        return;
+                    }
                 };
 
                 if state != wl_keyboard::KeyState::Pressed {
-                    let repeat_state = crate_state.repeat.as_mut().unwrap();
                     repeat_state.key = None;
                     return;
                 }
 
                 let key = KeyCode::from(key + 8);
-
-                let repeat_state = crate_state.repeat.as_mut().unwrap();
 
                 repeat_state.key = Some(key);
                 repeat_state.started_at = Instant::now();

@@ -6,7 +6,6 @@ use std::{
     time::Instant,
 };
 
-use anyhow::Context;
 use memfd::Memfd;
 use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
@@ -121,10 +120,13 @@ impl InputItems {
 
     fn get_stdin() -> String {
         let mut input = String::new();
-        io::stdin()
-            .read_to_string(&mut input)
-            .context("failed to read from stdin")
-            .unwrap();
+        match io::stdin().read_to_string(&mut input) {
+            Ok(_) => {}
+            Err(e) => {
+                tracing::error!("failed to get stdin: {e}");
+                std::process::exit(1)
+            }
+        }
 
         input
     }
@@ -154,9 +156,13 @@ impl InputItems {
 
         let input = Self::get_stdin();
 
-        serde_json::from_str(&input)
-            .context("failed to parse input")
-            .unwrap()
+        match serde_json::from_str(&input) {
+            Ok(v) => v,
+            Err(e) => {
+                tracing::error!("input is invalid JSON: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     fn from_path() -> InputItems {
@@ -179,7 +185,7 @@ impl InputItems {
                 let entry = match entry {
                     Ok(v) => v,
                     Err(e) => {
-                        tracing::warn!("{e:?}");
+                        tracing::warn!("{e}");
                         continue;
                     }
                 };
@@ -189,7 +195,7 @@ impl InputItems {
                     let metadata = match fs::metadata(&path) {
                         Ok(v) => v,
                         Err(e) => {
-                            tracing::warn!("{e:?}");
+                            tracing::warn!("{e}");
                             continue;
                         }
                     };
@@ -199,7 +205,7 @@ impl InputItems {
                     {
                         bins.push(InputItem::new(
                             name.to_owned(),
-                            serde_json::Value::String(path.to_str().unwrap().to_string()),
+                            serde_json::Value::String(path.display().to_string()),
                         ));
                     }
                 }
@@ -364,7 +370,20 @@ pub struct Registries {
 }
 
 #[derive(Debug)]
+pub struct Buffer {
+    pub memfd: Memfd,
+    pub mmap: MmapMut,
+}
+
+impl Buffer {
+    pub fn new(memfd: Memfd, mmap: MmapMut) -> Self {
+        Self { memfd, mmap }
+    }
+}
+
+#[derive(Debug)]
 pub struct AppData {
+    pub buffer: Option<Buffer>,
     pub repeat: Option<RepeatState>,
     pub wayland_globals: WaylandGlobals,
     pub output: Option<Output>,
@@ -372,9 +391,6 @@ pub struct AppData {
 
     pub configured: bool,
     pub callback_done: bool,
-
-    pub buffer_memfd: Option<Memfd>,
-    pub buffer_mmap: Option<MmapMut>,
 
     pub inp: Input,
 
@@ -384,6 +400,7 @@ pub struct AppData {
 impl AppData {
     pub fn new(cli: Cli, inputs: InputItems) -> anyhow::Result<Self> {
         Ok(Self {
+            buffer: None,
             repeat: None,
             wayland_globals: WaylandGlobals::default(),
             output: None,
@@ -392,9 +409,6 @@ impl AppData {
             configured: false,
             callback_done: false,
 
-            buffer_memfd: None,
-            buffer_mmap: None,
-
             inp: Input::new(inputs)?,
 
             cli,
@@ -402,7 +416,10 @@ impl AppData {
     }
 
     pub fn handle_key(&mut self, key: KeyCode) {
-        let xkb = self.xkb.as_ref().unwrap();
+        let Some(xkb) = self.xkb.as_ref() else {
+            tracing::error!("Tried to handle a key without xkb state being initialized");
+            return;
+        };
 
         let sym = xkb.0.key_get_one_sym(key);
 
@@ -412,7 +429,10 @@ impl AppData {
                 std::process::exit(0)
             }
 
-            let result = self.inp.filtered_inputs().get(index).unwrap().clone();
+            let result = match self.inp.filtered_inputs().get(index) {
+                Some(v) => v.clone(),
+                None => std::process::exit(0),
+            };
 
             if let serde_json::Value::String(ref raw) = result.raw
                 && self.cli.path_launcher
@@ -420,8 +440,16 @@ impl AppData {
                 let _ = Command::new(raw).exec();
                 std::process::exit(1)
             } else if self.cli.json_out {
-                println!("{}", serde_json::to_string(&result).unwrap());
-                std::process::exit(0)
+                match serde_json::to_string(&result) {
+                    Ok(v) => {
+                        print!("{v}");
+                        std::process::exit(0)
+                    }
+                    Err(e) => {
+                        tracing::error!("failed to convert result into json: {e}");
+                        std::process::exit(1);
+                    }
+                };
             } else {
                 match result.raw {
                     serde_json::Value::String(ref s) => println!("{s}"),
@@ -439,19 +467,16 @@ impl AppData {
             keysyms::KEY_Left => self.inp.move_left(),
 
             _ => {
-                let xkb_state = &self.xkb.as_ref().unwrap().0;
+                let alt_pressed = xkb.0.mod_name_is_active("Mod1", xkb::STATE_MODS_EFFECTIVE);
 
-                let alt_pressed = xkb_state.mod_name_is_active("Mod1", xkb::STATE_MODS_EFFECTIVE);
-
-                let s = xkb_state.key_get_utf8(key);
+                let s = xkb.0.key_get_utf8(key);
 
                 if alt_pressed && let Ok(digit) = s.parse::<u8>() {
                     let mapped = if digit == 0 { 9 } else { digit - 1 };
 
                     execute(self.inp.selected_index() as usize + mapped as usize)
                 } else {
-                    self.inp
-                        .push(&self.xkb.as_ref().unwrap().0.key_get_utf8(key));
+                    self.inp.push(&xkb.0.key_get_utf8(key));
                 }
             }
         }

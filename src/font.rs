@@ -1,6 +1,6 @@
 use std::{fs::OpenOptions, io::Read};
 
-use ab_glyph::{Font, FontRef, PxScale, ScaleFont, point};
+use ab_glyph::{Font, FontVec, PxScale, ScaleFont, point};
 use anyhow::Context;
 use fontconfig::Fontconfig;
 
@@ -14,40 +14,70 @@ pub fn get_font(family: &str, style: Option<&str>) -> anyhow::Result<fontconfig:
     Ok(font)
 }
 
+fn fallback_font() -> anyhow::Result<TextRender> {
+    Ok(TextRender(FontVec::try_from_vec(
+        include_bytes!("../assets/font/FiraCode-Regular.ttf").to_vec(),
+    )?))
+}
+
 pub fn load_font(font: Option<fontconfig::Font>) -> anyhow::Result<TextRender> {
+    let fallback = fallback_font()?;
+
     let font = match font {
         Some(v) => v,
         None => {
-            return Ok(TextRender(
-                include_bytes!("../assets/font/FiraCode-Regular.ttf").to_vec(),
-            ));
+            tracing::warn!("using fallback font");
+            return Ok(fallback);
         }
     };
 
-    let mut file = OpenOptions::new().read(true).open(font.path)?;
+    let mut file = match OpenOptions::new().read(true).open(&font.path) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                "failed to open font file '{}': {e}\nusing fallback font",
+                font.path.display()
+            );
+            return Ok(fallback);
+        }
+    };
 
     let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer)?;
+    match file.read_to_end(&mut buffer) {
+        Ok(_) => {}
+        Err(e) => {
+            tracing::warn!(
+                "failed to read config font file '{}': {e}\nusing fallback font",
+                font.path.display()
+            );
+            return Ok(fallback);
+        }
+    };
 
-    Ok(TextRender(buffer))
+    let font = match FontVec::try_from_vec(buffer) {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::warn!(
+                "failed to parse font file '{}' into FontVec: {e}\nusing fallback font",
+                font.path.display()
+            );
+            return Ok(fallback);
+        }
+    };
+
+    Ok(TextRender(font))
 }
 
-pub struct TextRender(Vec<u8>);
+pub struct TextRender(FontVec);
 
 impl TextRender {
-    fn get_font_ref(&self) -> FontRef<'_> {
-        FontRef::try_from_slice(&self.0).unwrap()
-    }
-
     pub fn text_width(&self, text: &str, font_size: f32) -> u32 {
         if text.is_empty() {
             return 0;
         }
 
-        let font_ref = self.get_font_ref();
-
         let scale = PxScale::from(font_size);
-        let scaled_font = font_ref.as_scaled(scale);
+        let scaled_font = self.0.as_scaled(scale);
 
         let mut x = 0.0;
         let mut prev = None;
@@ -81,10 +111,8 @@ impl TextRender {
             return;
         }
 
-        let font_ref = self.get_font_ref();
-
         let scale = PxScale::from(font_size);
-        let scaled_font = font_ref.as_scaled(scale);
+        let scaled_font = self.0.as_scaled(scale);
 
         let text_height = scaled_font.ascent() - scaled_font.descent();
         let baseline = ((height as f32 - text_height) / 2.0) + scaled_font.ascent();
