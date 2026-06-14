@@ -15,7 +15,7 @@ use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
-    appdata::{AppData, Buffer, InputItems},
+    appdata::{AppData, Buffer},
     cli::Cli,
 };
 
@@ -33,13 +33,7 @@ pub static NAME: &str = "kymenu";
 fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().init();
 
-    let mut state = {
-        let cli = Cli::parse();
-
-        let inputs = InputItems::new(&cli);
-
-        AppData::new(cli, inputs)?
-    };
+    let mut state = AppData::new(Cli::parse())?;
 
     let font = font::load_font(
         font::get_font(&state.cli.font_family, state.cli.font_style.as_deref()).ok(),
@@ -47,24 +41,20 @@ fn main() -> anyhow::Result<()> {
 
     // Connect to beloved wayland
     let conn = Connection::connect_to_env()?;
-    let display = conn.display();
-
     let mut event_queue = conn.new_event_queue();
     let qh = event_queue.handle();
 
+    let display = conn.display();
     let registry = display.get_registry(&qh, ());
+    display.sync(&qh, ());
 
-    {
-        // Make sure all registries are received
-        display.sync(&qh, ());
+    // Make sure all registries are received
+    loop {
+        event_queue.roundtrip(&mut state)?;
 
-        loop {
-            event_queue.roundtrip(&mut state)?;
-
-            if state.callback_done {
-                state.callback_done = false;
-                break;
-            }
+        if state.callback_done {
+            state.callback_done = false;
+            break;
         }
     }
 
@@ -92,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         .set_keyboard_interactivity(zwlr_layer_surface_v1::KeyboardInteractivity::Exclusive);
     surface.commit();
 
-    // Wait for output to be set from wayland event from the layered_surface
+    // Wait for output sizes to be sent from wayland via an event from the layered_surface
     let output = loop {
         event_queue.roundtrip(&mut state)?;
 

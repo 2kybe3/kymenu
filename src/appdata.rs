@@ -398,7 +398,7 @@ pub struct AppData {
 }
 
 impl AppData {
-    pub fn new(cli: Cli, inputs: InputItems) -> anyhow::Result<Self> {
+    pub fn new(cli: Cli) -> anyhow::Result<Self> {
         Ok(Self {
             buffer: None,
             repeat: None,
@@ -409,7 +409,7 @@ impl AppData {
             configured: false,
             callback_done: false,
 
-            inp: Input::new(inputs)?,
+            inp: Input::new(InputItems::new(&cli))?,
 
             cli,
         })
