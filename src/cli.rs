@@ -104,6 +104,16 @@ pub struct Cli {
         help = "Show only the input prompt and return the input after pressing enter"
     )]
     pub(crate) input: bool,
+    #[arg(
+        long,
+        num_args = 0..=1,
+        require_equals = true,
+        action = ArgAction::Set,
+        default_value_t = false,
+        default_missing_value = "true",
+        help = "Hides the current input with stars"
+    )]
+    pub(crate) hidden_input: bool,
 
     // Colors
     #[arg(long, default_value_t = Color::DEFAULT_ITEM_COLOR)]

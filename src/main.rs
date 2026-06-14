@@ -215,7 +215,12 @@ fn main() -> anyhow::Result<()> {
             {
                 // Current Input
                 let mut extra = false;
-                let mut input = state.inp.input().to_owned();
+
+                let mut input = if state.cli.hidden_input {
+                    "*".repeat(state.inp.input().chars().count())
+                } else {
+                    state.inp.input().to_string()
+                };
 
                 let check_width = if state.cli.input { width } else { width / 4 };
 
@@ -223,7 +228,7 @@ fn main() -> anyhow::Result<()> {
                 if index + size >= check_width {
                     let mut truncated = String::new();
 
-                    for c in state.inp.input().chars() {
+                    for c in input.chars() {
                         let next = format!("{}...", truncated.clone() + &c.to_string());
                         if font.text_width(&next, state.cli.font_size) + index >= check_width {
                             extra = true;
