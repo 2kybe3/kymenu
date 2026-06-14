@@ -12,7 +12,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 use xkbcommon::xkb;
 use xkeysym::KeyCode;
 
-use crate::AppData;
+use crate::{AppData, appdata::WaylandGlobal};
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
     fn event(
@@ -30,21 +30,15 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
         } = event
         {
             match interface.as_str() {
+                "wl_shm" => state.wayland_globals.shm = Some(WaylandGlobal::new(name, version)),
                 "wl_compositor" => {
-                    state.wayland_globals.compositor_name = Some(name);
-                    state.wayland_globals.compositor_version = Some(version);
+                    state.wayland_globals.compositor = Some(WaylandGlobal::new(name, version))
                 }
                 "zwlr_layer_shell_v1" => {
-                    state.wayland_globals.layer_shell_name = Some(name);
-                    state.wayland_globals.layer_shell_version = Some(version);
-                }
-                "wl_shm" => {
-                    state.wayland_globals.shm_name = Some(name);
-                    state.wayland_globals.shm_version = Some(version);
+                    state.wayland_globals.layer_shell = Some(WaylandGlobal::new(name, version))
                 }
                 "wl_seat" => {
-                    state.wayland_globals.wl_seat_name = Some(name);
-                    state.wayland_globals.wl_seat_version = Some(version);
+                    state.wayland_globals.wl_seat = Some(WaylandGlobal::new(name, version))
                 }
                 _ => {}
             }

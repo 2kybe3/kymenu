@@ -21,42 +21,57 @@ use xkeysym::KeyCode;
 use crate::cli::Cli;
 
 #[derive(Default, Debug)]
+pub struct WaylandGlobal {
+    name: u32,
+    version: u32,
+}
+
+impl WaylandGlobal {
+    pub fn new(name: u32, version: u32) -> Self {
+        Self { name, version }
+    }
+}
+
+#[derive(Default, Debug)]
 pub struct WaylandGlobals {
-    pub compositor_name: Option<u32>,
-    pub compositor_version: Option<u32>,
-    pub layer_shell_name: Option<u32>,
-    pub layer_shell_version: Option<u32>,
-    pub shm_name: Option<u32>,
-    pub shm_version: Option<u32>,
-    pub wl_seat_name: Option<u32>,
-    pub wl_seat_version: Option<u32>,
+    pub compositor: Option<WaylandGlobal>,
+    pub layer_shell: Option<WaylandGlobal>,
+    pub wl_seat: Option<WaylandGlobal>,
+    pub shm: Option<WaylandGlobal>,
 }
 
 impl WaylandGlobals {
     pub fn bind_registries(&self, registry: &WlRegistry, qh: &QueueHandle<AppData>) -> Registries {
-        let shm = if let (Some(name), Some(version)) = (self.shm_name, self.shm_version) {
-            registry.bind::<wl_shm::WlShm, _, _>(name, version, qh, ())
+        let shm = if let Some(shm) = &self.shm {
+            registry.bind::<wl_shm::WlShm, _, _>(shm.name, shm.version, qh, ())
         } else {
             panic!("No shared memory support");
         };
 
-        let compositor =
-            if let (Some(name), Some(version)) = (self.compositor_name, self.compositor_version) {
-                registry.bind::<wl_compositor::WlCompositor, _, _>(name, version, qh, ())
-            } else {
-                panic!("No compositor");
-            };
+        let compositor = if let Some(compositor) = &self.compositor {
+            registry.bind::<wl_compositor::WlCompositor, _, _>(
+                compositor.name,
+                compositor.version,
+                qh,
+                (),
+            )
+        } else {
+            panic!("No compositor");
+        };
 
-        let layer_shell = if let (Some(name), Some(version)) =
-            (self.layer_shell_name, self.layer_shell_version)
-        {
-            registry.bind::<zwlr_layer_shell_v1::ZwlrLayerShellV1, _, _>(name, version, qh, ())
+        let layer_shell = if let Some(layer_shell) = &self.layer_shell {
+            registry.bind::<zwlr_layer_shell_v1::ZwlrLayerShellV1, _, _>(
+                layer_shell.name,
+                layer_shell.version,
+                qh,
+                (),
+            )
         } else {
             panic!("No layer shell");
         };
 
-        let seat = if let (Some(name), Some(version)) = (self.wl_seat_name, self.wl_seat_version) {
-            registry.bind::<wl_seat::WlSeat, _, _>(name, version, qh, ())
+        let seat = if let Some(wl_seat) = &self.wl_seat {
+            registry.bind::<wl_seat::WlSeat, _, _>(wl_seat.name, wl_seat.version, qh, ())
         } else {
             panic!("No Seat");
         };
