@@ -20,7 +20,8 @@ pub struct Cli {
         short,
         long,
         default_value = ">>",
-        help = "Prompt symbol shown before user input"
+        help = "Prompt symbol shown before user input",
+        value_parser = |str: &str| Ok::<_, std::io::Error>(format!("{str} ")),
     )]
     pub(crate) prompt: String,
     #[arg(long, default_value = ">", help = "Arrow shown at the end of a line")]

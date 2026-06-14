@@ -18,7 +18,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xkbcommon::xkb::{self, keysyms};
 use xkeysym::KeyCode;
 
-use crate::extracted::Extracted;
+use crate::cli::Cli;
 
 #[derive(Default, Debug)]
 pub struct WaylandGlobals {
@@ -92,12 +92,12 @@ pub struct Input {
 pub struct InputItems(pub Vec<InputItem>);
 
 impl InputItems {
-    pub fn new(extracted: &Extracted) -> Self {
-        if extracted.input {
+    pub fn new(cli: &Cli) -> Self {
+        if cli.input {
             Self(vec![])
-        } else if extracted.path_launcher {
+        } else if cli.path_launcher {
             Self::from_path()
-        } else if extracted.json_in {
+        } else if cli.json_in {
             Self::from_json_in()
         } else {
             Self::from_input()
@@ -363,11 +363,11 @@ pub struct AppData {
 
     pub inp: Input,
 
-    pub extracted: Extracted,
+    pub cli: Cli,
 }
 
 impl AppData {
-    pub fn new(extracted: Extracted, inputs: InputItems) -> anyhow::Result<Self> {
+    pub fn new(cli: Cli, inputs: InputItems) -> anyhow::Result<Self> {
         Ok(Self {
             repeat: None,
             wayland_globals: WaylandGlobals::default(),
@@ -382,7 +382,7 @@ impl AppData {
 
             inp: Input::new(inputs)?,
 
-            extracted,
+            cli,
         })
     }
 
@@ -392,7 +392,7 @@ impl AppData {
         let sym = xkb.0.key_get_one_sym(key);
 
         let execute = |index: usize| {
-            if self.extracted.input {
+            if self.cli.input {
                 println!("{}", self.inp.input);
                 std::process::exit(0)
             }
@@ -400,11 +400,11 @@ impl AppData {
             let result = self.inp.filtered_inputs().get(index).unwrap().clone();
 
             if let serde_json::Value::String(ref raw) = result.raw
-                && self.extracted.path_launcher
+                && self.cli.path_launcher
             {
                 let _ = Command::new(raw).exec();
                 std::process::exit(1)
-            } else if self.extracted.json_out {
+            } else if self.cli.json_out {
                 println!("{}", serde_json::to_string(&result).unwrap());
                 std::process::exit(0)
             } else {

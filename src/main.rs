@@ -2,7 +2,6 @@ mod appdata;
 mod cli;
 mod color;
 mod dispatch;
-mod extracted;
 mod font;
 
 use std::{
@@ -35,19 +34,15 @@ fn main() -> anyhow::Result<()> {
     tracing_subscriber::fmt().init();
 
     let mut state = {
-        let extracted = Cli::parse().extract();
+        let cli = Cli::parse();
 
-        let inputs = InputItems::new(&extracted);
+        let inputs = InputItems::new(&cli);
 
-        AppData::new(extracted, inputs)?
+        AppData::new(cli, inputs)?
     };
 
     let font = font::load_font(
-        font::get_font(
-            &state.extracted.font_family,
-            state.extracted.font_style.as_deref(),
-        )
-        .ok(),
+        font::get_font(&state.cli.font_family, state.cli.font_style.as_deref()).ok(),
     )?;
 
     // Connect to beloved wayland
@@ -86,7 +81,7 @@ fn main() -> anyhow::Result<()> {
         (),
     );
 
-    layered_surface.set_size(0, state.extracted.height);
+    layered_surface.set_size(0, state.cli.height);
     layered_surface.set_anchor(
         zwlr_layer_surface_v1::Anchor::Top
             | zwlr_layer_surface_v1::Anchor::Left
@@ -192,21 +187,21 @@ fn main() -> anyhow::Result<()> {
             let buffer = &mut state.buffer_mmap.as_mut().unwrap()[offset..offset + size];
 
             // Background
-            let bgra = u32::from_le_bytes(state.extracted.background_color.get_bgra());
+            let bgra = u32::from_le_bytes(state.cli.background_color.get_bgra());
             let pixels = bytemuck::cast_slice_mut::<u8, u32>(buffer);
             pixels.fill(bgra);
 
             // Rendering from left to right
-            let mut index = state.extracted.start_margin;
+            let mut index = state.cli.start_margin;
             {
                 // Prompt
-                let size = font.text_width(&state.extracted.prompt, state.extracted.font_size);
+                let size = font.text_width(&state.cli.prompt, state.cli.font_size);
 
                 font.render_text(
-                    &state.extracted.prompt,
-                    state.extracted.font_size,
+                    &state.cli.prompt,
+                    state.cli.font_size,
                     index,
-                    &state.extracted.prompt_color,
+                    &state.cli.prompt_color,
                     buffer,
                     height,
                     width,
@@ -220,20 +215,15 @@ fn main() -> anyhow::Result<()> {
                 let mut extra = false;
                 let mut input = state.inp.input().to_owned();
 
-                let check_width = if state.extracted.input {
-                    width
-                } else {
-                    width / 4
-                };
+                let check_width = if state.cli.input { width } else { width / 4 };
 
-                let mut size = font.text_width(&input, state.extracted.font_size);
+                let mut size = font.text_width(&input, state.cli.font_size);
                 if index + size >= check_width {
                     let mut truncated = String::new();
 
                     for c in state.inp.input().chars() {
                         let next = format!("{}...", truncated.clone() + &c.to_string());
-                        if font.text_width(&next, state.extracted.font_size) + index >= check_width
-                        {
+                        if font.text_width(&next, state.cli.font_size) + index >= check_width {
                             extra = true;
                             break;
                         }
@@ -241,14 +231,14 @@ fn main() -> anyhow::Result<()> {
                     }
 
                     input = truncated;
-                    size = font.text_width(&input, state.extracted.font_size);
+                    size = font.text_width(&input, state.cli.font_size);
                 }
 
                 font.render_text(
                     &input,
-                    state.extracted.font_size,
+                    state.cli.font_size,
                     index,
-                    &state.extracted.input_color,
+                    &state.cli.input_color,
                     buffer,
                     height,
                     width,
@@ -259,41 +249,40 @@ fn main() -> anyhow::Result<()> {
                 if extra {
                     font.render_text(
                         "...",
-                        state.extracted.font_size,
+                        state.cli.font_size,
                         index,
-                        &state.extracted.extra_text_color,
+                        &state.cli.extra_text_color,
                         buffer,
                         height,
                         width,
                     );
 
-                    index += font.text_width("...", state.extracted.font_size);
+                    index += font.text_width("...", state.cli.font_size);
                 }
             }
 
-            if !state.extracted.input {
-                if index + state.extracted.bin_start_margin < state.extracted.default_bin_start_x {
-                    index = state.extracted.default_bin_start_x;
+            if !state.cli.input {
+                if index + state.cli.bin_start_margin < state.cli.default_bin_start {
+                    index = state.cli.default_bin_start;
                 } else {
-                    index += state.extracted.bin_start_margin;
+                    index += state.cli.bin_start_margin;
                 }
 
                 {
                     // Start Arrow
                     let arrow = if state.inp.selected_index() == 0 {
-                        &state.extracted.start_arrow
+                        &state.cli.start_arrow
                     } else {
-                        &state.extracted.start_arrow_more
+                        &state.cli.start_arrow_more
                     };
 
-                    let size = font.text_width(arrow, state.extracted.font_size)
-                        + state.extracted.arrow_margin;
+                    let size = font.text_width(arrow, state.cli.font_size) + state.cli.arrow_margin;
 
                     font.render_text(
                         arrow,
-                        state.extracted.font_size,
+                        state.cli.font_size,
                         index,
-                        &state.extracted.arrow_color,
+                        &state.cli.arrow_color,
                         buffer,
                         height,
                         width,
@@ -304,13 +293,12 @@ fn main() -> anyhow::Result<()> {
                 // Packages
                 let mut all_bins_shown = true;
 
-                let end_arrow_size = font
-                    .text_width(&state.extracted.end_arrow, state.extracted.font_size)
-                    + state.extracted.end_margin;
+                let end_arrow_size = font.text_width(&state.cli.end_arrow, state.cli.font_size)
+                    + state.cli.end_margin;
 
                 let end_arrow_size_more = font
-                    .text_width(&state.extracted.end_arrow_more, state.extracted.font_size)
-                    + state.extracted.end_margin;
+                    .text_width(&state.cli.end_arrow_more, state.cli.font_size)
+                    + state.cli.end_margin;
 
                 for (i, bin) in state
                     .inp
@@ -321,11 +309,11 @@ fn main() -> anyhow::Result<()> {
                 {
                     let last = i == state.inp.filtered_inputs().len() - 1;
 
-                    let size = font.text_width(bin.display(), state.extracted.font_size)
+                    let size = font.text_width(bin.display(), state.cli.font_size)
                         + if last {
-                            state.extracted.arrow_margin
+                            state.cli.arrow_margin
                         } else {
-                            state.extracted.text_margin
+                            state.cli.text_margin
                         };
 
                     if (index + size)
@@ -342,12 +330,12 @@ fn main() -> anyhow::Result<()> {
 
                     font.render_text(
                         bin.display(),
-                        state.extracted.font_size,
+                        state.cli.font_size,
                         index,
                         if i == state.inp.selected_index() as usize {
-                            &state.extracted.selected_color
+                            &state.cli.selected_color
                         } else {
-                            &state.extracted.item_color
+                            &state.cli.item_color
                         },
                         buffer,
                         height,
@@ -360,19 +348,18 @@ fn main() -> anyhow::Result<()> {
                 {
                     // End Arrow
                     let arrow = if all_bins_shown {
-                        &state.extracted.end_arrow
+                        &state.cli.end_arrow
                     } else {
-                        &state.extracted.end_arrow_more
+                        &state.cli.end_arrow_more
                     };
 
-                    let size = font.text_width(arrow, state.extracted.font_size)
-                        + state.extracted.end_margin;
+                    let size = font.text_width(arrow, state.cli.font_size) + state.cli.end_margin;
 
                     font.render_text(
                         arrow,
-                        state.extracted.font_size,
+                        state.cli.font_size,
                         if all_bins_shown { index } else { width - size },
-                        &state.extracted.arrow_color,
+                        &state.cli.arrow_color,
                         buffer,
                         height,
                         width,
