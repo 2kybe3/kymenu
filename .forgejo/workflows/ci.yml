@@ -24,8 +24,7 @@ jobs:
 
       - name: Build & Checks
         run: |
-          nix build . --max-jobs 32 -L --no-update-lock-file --accept-flake-config
-          nix flake check . --max-jobs 32 -L --no-update-lock-file --accept-flake-config
+          nix flake check . -L --no-update-lock-file --accept-flake-config
 
       - name: Push to Attic
         if: ${{ steps.attic.conclusion == 'success' }}
