@@ -4,7 +4,7 @@ use thiserror::Error;
 #[derive(Debug, Error)]
 pub enum ParseColorError {
     #[error("wrong hex length: {0}")]
-    WrongHexLengt(usize),
+    WrongHexLength(usize),
     #[error("invalid red component: {0}")]
     InvalidRedComponent(std::num::ParseIntError),
     #[error("invalid green component: {0}")]
@@ -56,7 +56,7 @@ impl Color {
 
         match hex.len() {
             6 | 8 => {}
-            len => return Err(ParseColorError::WrongHexLengt(len)),
+            len => return Err(ParseColorError::WrongHexLength(len)),
         }
 
         let r = u8::from_str_radix(&hex[0..2], 16).map_err(ParseColorError::InvalidRedComponent)?;
@@ -135,8 +135,8 @@ mod tests {
         let err = Color::from_str("#123").unwrap_err();
 
         match err {
-            ParseColorError::WrongHexLengt(len) => assert_eq!(len, 3),
-            _ => panic!("expected WrongHexLengt"),
+            ParseColorError::WrongHexLength(len) => assert_eq!(len, 3),
+            _ => panic!("expected WrongHexLength"),
         }
     }
 

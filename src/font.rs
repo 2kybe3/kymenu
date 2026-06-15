@@ -51,7 +51,7 @@ impl TextFont {
     }
 
     fn load_font(family: &str, style: Option<&str>) -> anyhow::Result<Self> {
-        let fc = Fontconfig::new().context("failed to create Fontconfig intsance")?;
+        let fc = Fontconfig::new().context("failed to create Fontconfig instance")?;
         let font = fc.find(family, style).context("font not found")?;
         Self::from_path(font.path.as_path())
     }
