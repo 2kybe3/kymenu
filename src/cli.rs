@@ -2,6 +2,14 @@ use clap::{ArgAction, Parser};
 
 use crate::color::Color;
 
+const DEFAULT_ARROW_COLOR: Color = Color::rgb(50, 255, 50);
+const DEFAULT_BACKGROUND_COLOR: Color = Color::rgba(0, 0, 0, 200);
+const DEFAULT_EXTRA_TEXT_COLOR: Color = Color::rgb(255, 50, 50);
+const DEFAULT_INPUT_COLOR: Color = Color::rgb(50, 50, 255);
+const DEFAULT_ITEM_COLOR: Color = Color::rgb(255, 255, 255);
+const DEFAULT_PROMPT_COLOR: Color = Color::rgb(50, 255, 50);
+const DEFAULT_SELECTED_COLOR: Color = Color::rgb(50, 50, 255);
+
 #[derive(Parser, Debug)]
 #[command(version, about)]
 pub struct Cli {
@@ -116,18 +124,18 @@ pub struct Cli {
     pub(crate) hidden_input: bool,
 
     // Colors
-    #[arg(long, default_value_t = Color::DEFAULT_ITEM_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_ITEM_COLOR)]
     pub(crate) item_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_BACKGROUND_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_BACKGROUND_COLOR)]
     pub(crate) background_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_PROMPT_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_PROMPT_COLOR)]
     pub(crate) prompt_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_ARROW_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_ARROW_COLOR)]
     pub(crate) arrow_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_INPUT_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_INPUT_COLOR)]
     pub(crate) input_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_SELECTED_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_SELECTED_COLOR)]
     pub(crate) selected_color: Color,
-    #[arg(long, default_value_t = Color::DEFAULT_EXTRA_TEXT_COLOR)]
+    #[arg(long, default_value_t = DEFAULT_EXTRA_TEXT_COLOR)]
     pub(crate) extra_text_color: Color,
 }

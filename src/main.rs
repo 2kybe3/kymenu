@@ -17,6 +17,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 use crate::{
     appdata::{AppData, Buffer},
     cli::Cli,
+    font::{TextFont, TextRenderer},
 };
 
 /*
@@ -35,9 +36,10 @@ fn main() -> anyhow::Result<()> {
 
     let mut state = AppData::new(Cli::parse())?;
 
-    let font = font::load_font(
-        font::get_font(&state.cli.font_family, state.cli.font_style.as_deref()).ok(),
-    )?;
+    let font = TextRenderer::new(TextFont::new(
+        &state.cli.font_family,
+        state.cli.font_style.as_deref(),
+    ));
 
     // Connect to beloved wayland
     let conn = Connection::connect_to_env()?;

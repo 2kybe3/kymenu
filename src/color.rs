@@ -1,17 +1,30 @@
 use std::{fmt::Display, str::FromStr};
+use thiserror::Error;
 
-use anyhow::Context;
+#[derive(Debug, Error)]
+pub enum ParseColorError {
+    #[error("wrong hex length: {0}")]
+    WrongHexLengt(usize),
+    #[error("invalid red component: {0}")]
+    InvalidRedComponent(std::num::ParseIntError),
+    #[error("invalid green component: {0}")]
+    InvalidGreenComponent(std::num::ParseIntError),
+    #[error("invalid blue component: {0}")]
+    InvalidBlueComponent(std::num::ParseIntError),
+    #[error("invalid alpha component: {0}")]
+    InvalidAlphaComponent(std::num::ParseIntError),
+}
 
 #[derive(Debug, Clone)]
 pub struct Color {
     pub r: u8,
-    pub b: u8,
     pub g: u8,
+    pub b: u8,
     pub a: u8,
 }
 
 impl FromStr for Color {
-    type Err = anyhow::Error;
+    type Err = ParseColorError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         Color::hex(s)
@@ -25,18 +38,6 @@ impl Display for Color {
 }
 
 impl Color {
-    pub const DEFAULT_ITEM_COLOR: Color = Color::rgb(255, 255, 255);
-
-    pub const DEFAULT_BACKGROUND_COLOR: Color = Color::rgba(0, 0, 0, 200);
-
-    pub const DEFAULT_PROMPT_COLOR: Color = Color::rgb(50, 255, 50);
-    pub const DEFAULT_ARROW_COLOR: Color = Color::rgb(50, 255, 50);
-
-    pub const DEFAULT_INPUT_COLOR: Color = Color::rgb(50, 50, 255);
-    pub const DEFAULT_SELECTED_COLOR: Color = Color::rgb(50, 50, 255);
-
-    pub const DEFAULT_EXTRA_TEXT_COLOR: Color = Color::rgb(255, 50, 50);
-
     pub const fn rgb(r: u8, g: u8, b: u8) -> Self {
         Self {
             r,
@@ -50,19 +51,21 @@ impl Color {
         Self { r, g, b, a }
     }
 
-    pub fn hex(hex: &str) -> anyhow::Result<Self> {
-        let hex = hex.strip_prefix('#').unwrap_or(hex).trim();
+    pub fn hex(hex: &str) -> Result<Self, ParseColorError> {
+        let hex = hex.trim().strip_prefix('#').unwrap_or(hex).trim();
 
         match hex.len() {
             6 | 8 => {}
-            len => anyhow::bail!("invalid hex color length: expected 6 or 8 characters, got {len}"),
+            len => return Err(ParseColorError::WrongHexLengt(len)),
         }
 
-        let r = u8::from_str_radix(&hex[0..2], 16).context("invalid red component")?;
-        let g = u8::from_str_radix(&hex[2..4], 16).context("invalid green component")?;
-        let b = u8::from_str_radix(&hex[4..6], 16).context("invalid blue component")?;
+        let r = u8::from_str_radix(&hex[0..2], 16).map_err(ParseColorError::InvalidRedComponent)?;
+        let g =
+            u8::from_str_radix(&hex[2..4], 16).map_err(ParseColorError::InvalidGreenComponent)?;
+        let b =
+            u8::from_str_radix(&hex[4..6], 16).map_err(ParseColorError::InvalidBlueComponent)?;
         let a = if hex.len() == 8 {
-            u8::from_str_radix(&hex[6..8], 16).context("invalid alpha component")?
+            u8::from_str_radix(&hex[6..8], 16).map_err(ParseColorError::InvalidAlphaComponent)?
         } else {
             255
         };
@@ -73,13 +76,92 @@ impl Color {
         format!("#{:02X}{:02X}{:02X}{:02X}", self.r, self.g, self.b, self.a)
     }
 
-    #[allow(unused)]
     pub const fn get_bgra(&self) -> [u8; 4] {
         [self.b, self.g, self.r, self.a]
     }
+}
 
-    #[allow(unused)]
-    pub const fn get_bgr(&self) -> [u8; 3] {
-        [self.b, self.g, self.r]
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_6_digit_hex_without_hash() {
+        let c = Color::from_str("ff0000").unwrap();
+        assert_eq!(c.r, 0xff);
+        assert_eq!(c.g, 0x00);
+        assert_eq!(c.b, 0x00);
+        assert_eq!(c.a, 0xff);
+    }
+
+    #[test]
+    fn parses_6_digit_hex_with_hash() {
+        let c = Color::from_str("#00ff00").unwrap();
+        assert_eq!(c.r, 0x00);
+        assert_eq!(c.g, 0xff);
+        assert_eq!(c.b, 0x00);
+        assert_eq!(c.a, 0xff);
+    }
+
+    #[test]
+    fn parses_8_digit_hex_with_alpha() {
+        let c = Color::from_str("#11223344").unwrap();
+        assert_eq!(c.r, 0x11);
+        assert_eq!(c.g, 0x22);
+        assert_eq!(c.b, 0x33);
+        assert_eq!(c.a, 0x44);
+    }
+
+    #[test]
+    fn hex_roundtrip_to_hex() {
+        let c = Color::rgb(10, 20, 30);
+        let hex = c.to_hex();
+        let parsed = Color::from_str(&hex).unwrap();
+
+        assert_eq!(parsed.r, 10);
+        assert_eq!(parsed.g, 20);
+        assert_eq!(parsed.b, 30);
+        assert_eq!(parsed.a, 255);
+    }
+
+    #[test]
+    fn display_matches_to_hex() {
+        let c = Color::rgba(1, 2, 3, 4);
+        assert_eq!(format!("{}", c), c.to_hex());
+    }
+
+    #[test]
+    fn invalid_hex_length() {
+        let err = Color::from_str("#123").unwrap_err();
+
+        match err {
+            ParseColorError::WrongHexLengt(len) => assert_eq!(len, 3),
+            _ => panic!("expected WrongHexLengt"),
+        }
+    }
+
+    #[test]
+    fn invalid_hex_characters() {
+        let err = Color::from_str("zzzzzz").unwrap_err();
+
+        match err {
+            ParseColorError::InvalidRedComponent(_) => {}
+            _ => panic!("expected InvalidRedComponent"),
+        }
+    }
+
+    #[test]
+    fn get_bgra_order_is_correct() {
+        let c = Color::rgba(1, 2, 3, 4);
+        assert_eq!(c.get_bgra(), [3, 2, 1, 4]);
+    }
+
+    #[test]
+    fn whitespace_is_trimmed() {
+        let c = Color::from_str("   #ff00ff   ").unwrap();
+        assert_eq!(c.r, 0xff);
+        assert_eq!(c.g, 0x00);
+        assert_eq!(c.b, 0xff);
+        assert_eq!(c.a, 0xff);
     }
 }

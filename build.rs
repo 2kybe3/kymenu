@@ -2,10 +2,14 @@ use clap::{CommandFactory, ValueEnum};
 
 const NAME: &str = "kymenu";
 
+#[allow(unused)]
 mod color {
     include!("src/color.rs");
 }
-include!("src/cli.rs");
+
+mod cli {
+    include!("src/cli.rs");
+}
 
 fn main() -> Result<(), std::io::Error> {
     let out_dir = match std::env::var_os("OUT_DIR") {
@@ -15,7 +19,7 @@ fn main() -> Result<(), std::io::Error> {
 
     println!("{}", out_dir.display());
 
-    let mut command = Cli::command();
+    let mut command = cli::Cli::command();
 
     generate_shell_completions(&mut command, &out_dir)?;
     generate_man_page(command, &out_dir)?;
