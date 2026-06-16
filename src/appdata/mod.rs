@@ -1,3 +1,7 @@
+pub mod buffer;
+pub mod output;
+pub mod wayland_globals;
+
 use std::{
     env, fs,
     io::{self, IsTerminal, Read},
@@ -6,89 +10,18 @@ use std::{
     time::Instant,
 };
 
-use memfd::Memfd;
-use memmap2::MmapMut;
 use serde::{Deserialize, Serialize};
-use wayland_client::{
-    QueueHandle,
-    protocol::{wl_compositor, wl_registry::WlRegistry, wl_seat, wl_shm},
-};
-use wayland_protocols_wlr::layer_shell::v1::client::zwlr_layer_shell_v1;
 use xkbcommon::xkb::{self, keysyms};
 use xkeysym::KeyCode;
 
-use crate::cli::Cli;
-
-#[derive(Default, Debug)]
-pub struct WaylandGlobal {
-    name: u32,
-    version: u32,
-}
-
-impl WaylandGlobal {
-    pub fn new(name: u32, version: u32) -> Self {
-        Self { name, version }
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct WaylandGlobals {
-    pub compositor: Option<WaylandGlobal>,
-    pub layer_shell: Option<WaylandGlobal>,
-    pub wl_seat: Option<WaylandGlobal>,
-    pub shm: Option<WaylandGlobal>,
-}
-
-impl WaylandGlobals {
-    pub fn bind_registries(&self, registry: &WlRegistry, qh: &QueueHandle<AppData>) -> Registries {
-        let shm = if let Some(shm) = &self.shm {
-            registry.bind::<wl_shm::WlShm, _, _>(shm.name, shm.version, qh, ())
-        } else {
-            panic!("No shared memory support");
-        };
-
-        let compositor = if let Some(compositor) = &self.compositor {
-            registry.bind::<wl_compositor::WlCompositor, _, _>(
-                compositor.name,
-                compositor.version,
-                qh,
-                (),
-            )
-        } else {
-            panic!("No compositor");
-        };
-
-        let layer_shell = if let Some(layer_shell) = &self.layer_shell {
-            registry.bind::<zwlr_layer_shell_v1::ZwlrLayerShellV1, _, _>(
-                layer_shell.name,
-                layer_shell.version,
-                qh,
-                (),
-            )
-        } else {
-            panic!("No layer shell");
-        };
-
-        let seat = if let Some(wl_seat) = &self.wl_seat {
-            registry.bind::<wl_seat::WlSeat, _, _>(wl_seat.name, wl_seat.version, qh, ())
-        } else {
-            panic!("No Seat");
-        };
-
-        Registries {
-            shm,
-            seat,
-            compositor,
-            layer_shell,
-        }
-    }
-}
-
-#[derive(Default, Debug)]
-pub struct Output {
-    pub width: u32,
-    pub height: u32,
-}
+use crate::{
+    appdata::{
+        buffer::Buffer,
+        output::Output,
+        wayland_globals::{Registries, WaylandGlobals},
+    },
+    cli::Cli,
+};
 
 #[derive(Default, Debug)]
 pub struct Input {
@@ -362,31 +295,13 @@ pub struct RepeatState {
 }
 
 #[derive(Debug)]
-pub struct Registries {
-    pub shm: wl_shm::WlShm,
-    pub seat: wl_seat::WlSeat,
-    pub compositor: wl_compositor::WlCompositor,
-    pub layer_shell: zwlr_layer_shell_v1::ZwlrLayerShellV1,
-}
-
-#[derive(Debug)]
-pub struct Buffer {
-    pub memfd: Memfd,
-    pub mmap: MmapMut,
-}
-
-impl Buffer {
-    pub fn new(memfd: Memfd, mmap: MmapMut) -> Self {
-        Self { memfd, mmap }
-    }
-}
-
-#[derive(Debug)]
 pub struct AppData {
-    pub buffer: Option<Buffer>,
-    pub repeat: Option<RepeatState>,
     pub wayland_globals: WaylandGlobals,
+    pub registries: Option<Registries>,
     pub output: Option<Output>,
+    pub buffer: Option<Buffer>,
+
+    pub repeat: Option<RepeatState>,
     pub xkb: Option<Xkb>,
 
     pub configured: bool,
@@ -400,10 +315,12 @@ pub struct AppData {
 impl AppData {
     pub fn new(cli: Cli) -> anyhow::Result<Self> {
         Ok(Self {
-            buffer: None,
-            repeat: None,
             wayland_globals: WaylandGlobals::default(),
+            registries: None,
             output: None,
+            buffer: None,
+
+            repeat: None,
             xkb: None,
 
             configured: false,

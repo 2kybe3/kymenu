@@ -4,18 +4,14 @@ mod color;
 mod dispatch;
 mod font;
 
-use std::{
-    os::fd::{AsRawFd, BorrowedFd},
-    time::{Duration, Instant},
-};
+use std::time::{Duration, Instant};
 
 use clap::Parser;
-use memmap2::Mmap;
 use wayland_client::{Connection, protocol::wl_shm};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
-    appdata::{AppData, Buffer},
+    appdata::{AppData, buffer::Buffer},
     cli::Cli,
     font::{TextFont, TextRenderer},
 };
@@ -60,7 +56,8 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    let registries = state.wayland_globals.bind_registries(&registry, &qh);
+    let registries = state.wayland_globals.bind(&registry, &qh);
+    state.registries = Some(registries.clone());
 
     // Create a surface and layered_surface
     let surface = registries.compositor.create_surface(&qh, ());
@@ -93,27 +90,7 @@ fn main() -> anyhow::Result<()> {
         }
     };
 
-    let pool = {
-        let size = (output.width * output.height * COLOR_SIZE) as usize;
-        let pool_size = size * 2;
-
-        // Create memory file for the buffer
-        let fd = memfd::MemfdOptions::default().create("memfd_create")?;
-        fd.as_file().set_len(pool_size as u64)?;
-
-        let mmap = unsafe { Mmap::map(fd.as_raw_fd())?.make_mut()? };
-
-        let pool = registries.shm.create_pool(
-            unsafe { BorrowedFd::borrow_raw(fd.as_raw_fd()) },
-            pool_size as i32,
-            &qh,
-            (),
-        );
-
-        state.buffer = Some(Buffer::new(fd, mmap));
-
-        pool
-    };
+    state.buffer = Some(Buffer::new(output, &registries.shm, &qh)?);
 
     // Start getting keyboard events
     registries.seat.get_keyboard(&qh, ());
@@ -161,24 +138,13 @@ fn main() -> anyhow::Result<()> {
                 std::process::exit(1);
             };
 
-            let width = output.width;
-            let height = output.height;
-
-            let size = (width * height * COLOR_SIZE) as usize;
-            let buffer_size = size * 2;
-
             let Some(state_buffer) = &mut state.buffer else {
                 tracing::error!("state_buffer somehow got unset. this is an bug!");
                 std::process::exit(1);
             };
 
-            state_buffer.memfd.as_file().set_len(buffer_size as u64)?;
-
-            let size = (width * height * COLOR_SIZE) as usize;
-
             // We swap between 2 buffers because 1 is in use by swayland and should not be used
-            let offset = (frame % 2) * size;
-            let buffer = &mut state_buffer.mmap[offset..offset + size];
+            let buffer = state_buffer.get_buffer(frame);
 
             // Background
             let bgra = u32::from_le_bytes(state.cli.background_color.get_bgra());
@@ -197,8 +163,8 @@ fn main() -> anyhow::Result<()> {
                     index,
                     &state.cli.prompt_color,
                     buffer,
-                    height,
-                    width,
+                    output.height(),
+                    output.width(),
                 );
 
                 index += size;
@@ -214,7 +180,11 @@ fn main() -> anyhow::Result<()> {
                     state.inp.input().to_string()
                 };
 
-                let check_width = if state.cli.input { width } else { width / 4 };
+                let check_width = if state.cli.input {
+                    output.width()
+                } else {
+                    output.width() / 4
+                };
 
                 let mut size = font.text_width(&input, state.cli.font_size);
                 if index + size >= check_width {
@@ -239,8 +209,8 @@ fn main() -> anyhow::Result<()> {
                     index,
                     &state.cli.input_color,
                     buffer,
-                    height,
-                    width,
+                    output.height(),
+                    output.width(),
                 );
 
                 index += size;
@@ -252,8 +222,8 @@ fn main() -> anyhow::Result<()> {
                         index,
                         &state.cli.extra_text_color,
                         buffer,
-                        height,
-                        width,
+                        output.height(),
+                        output.width(),
                     );
 
                     index += font.text_width("...", state.cli.font_size);
@@ -283,8 +253,8 @@ fn main() -> anyhow::Result<()> {
                         index,
                         &state.cli.arrow_color,
                         buffer,
-                        height,
-                        width,
+                        output.height(),
+                        output.width(),
                     );
                     index += size;
                 }
@@ -316,7 +286,7 @@ fn main() -> anyhow::Result<()> {
                         };
 
                     if (index + size)
-                        > width
+                        > output.width()
                             - if last {
                                 end_arrow_size
                             } else {
@@ -337,8 +307,8 @@ fn main() -> anyhow::Result<()> {
                             &state.cli.item_color
                         },
                         buffer,
-                        height,
-                        width,
+                        output.height(),
+                        output.width(),
                     );
 
                     index += size;
@@ -357,27 +327,23 @@ fn main() -> anyhow::Result<()> {
                     font.render_text(
                         arrow,
                         state.cli.font_size,
-                        if all_bins_shown { index } else { width - size },
+                        if all_bins_shown {
+                            index
+                        } else {
+                            output.width() - size
+                        },
                         &state.cli.arrow_color,
                         buffer,
-                        height,
-                        width,
+                        output.height(),
+                        output.width(),
                     );
                 }
             }
 
-            let buffer = pool.create_buffer(
-                offset as i32,
-                width as i32,
-                height as i32,
-                (width * COLOR_SIZE) as i32,
-                COLOR_FORMAT,
-                &qh,
-                (),
-            );
+            let buffer = state_buffer.get_wl_buffer(frame, output, &qh);
 
             surface.attach(Some(&buffer), 0, 0);
-            surface.damage(0, 0, width as i32, height as i32);
+            surface.damage(0, 0, output.width() as i32, output.height() as i32);
 
             surface.frame(&qh, ());
 

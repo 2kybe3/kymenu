@@ -12,7 +12,7 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 use xkbcommon::xkb;
 use xkeysym::KeyCode;
 
-use crate::{AppData, appdata::WaylandGlobal};
+use crate::{AppData, appdata::output::Output};
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
     fn event(
@@ -29,19 +29,7 @@ impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
             version,
         } = event
         {
-            match interface.as_str() {
-                "wl_shm" => state.wayland_globals.shm = Some(WaylandGlobal::new(name, version)),
-                "wl_compositor" => {
-                    state.wayland_globals.compositor = Some(WaylandGlobal::new(name, version))
-                }
-                "zwlr_layer_shell_v1" => {
-                    state.wayland_globals.layer_shell = Some(WaylandGlobal::new(name, version))
-                }
-                "wl_seat" => {
-                    state.wayland_globals.wl_seat = Some(WaylandGlobal::new(name, version))
-                }
-                _ => {}
-            }
+            state.wayland_globals.set(&interface, name, version);
         }
     }
 }
@@ -65,7 +53,32 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppData {
 
             state.configured = true;
 
-            state.output = Some(crate::appdata::Output { width, height })
+            let output = Output::new(width, height);
+
+            state.output = Some(output.clone());
+
+            if let Some(buffer) = &mut state.buffer {
+                buffer.set_pending_resize(output);
+            }
+        }
+    }
+}
+
+impl wayland_client::Dispatch<wl_buffer::WlBuffer, ()> for AppData {
+    fn event(
+        state: &mut Self,
+        _proxy: &wl_buffer::WlBuffer,
+        event: <wl_buffer::WlBuffer as wayland_client::Proxy>::Event,
+        _data: &(),
+        _conn: &wayland_client::Connection,
+        qhandle: &wayland_client::QueueHandle<Self>,
+    ) {
+        if let wl_buffer::Event::Release = event
+            && let (Some(buffer), Some(registries)) = (&mut state.buffer, &state.registries)
+            && buffer.has_pending_resize()
+            && let Err(e) = buffer.apply_pending_resize(&registries.shm, qhandle)
+        {
+            tracing::error!("resizing buffer failed: {e}");
         }
     }
 }
@@ -227,7 +240,6 @@ impl_dispatch!(
     wl_shm_pool::WlShmPool,
     wl_display::WlDisplay,
     wl_surface::WlSurface,
-    wl_buffer::WlBuffer,
     wl_seat::WlSeat,
     wl_shm::WlShm
 );
