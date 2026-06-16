@@ -4,8 +4,6 @@ mod color;
 mod dispatch;
 mod font;
 
-use std::time::{Duration, Instant};
-
 use clap::Parser;
 use wayland_client::{
     Connection,
@@ -107,32 +105,14 @@ fn main() -> anyhow::Result<()> {
         }
     }
 
-    // No frame is request so the loop would just sit there so we first have to set the dirty state
-    // once so we start sending frames (just adding surface.frame,commit now would also work but
-    // seems bloat)
+    // No frame is requested so the loop would just sit there so we first have to set the dirty state
+    // once so we start sending frames
     state.inp.dirty = true;
 
     loop {
-        // keyboard
-        let mut repeated_key = None;
+        let repeat_key = state.repeat.get_repeat();
 
-        if let (Some(config), Some(repeat)) =
-            (state.repeat_config.as_ref(), state.repeat_state.as_mut())
-        {
-            let now = Instant::now();
-
-            let delay = Duration::from_millis(config.delay as u64);
-            let interval = Duration::from_secs_f64(1.0 / config.rate as f64);
-
-            if now.duration_since(repeat.started_at) >= delay
-                && now.duration_since(repeat.last_repeat) >= interval
-            {
-                repeat.last_repeat = now;
-                repeated_key = Some(repeat.key);
-            }
-        }
-
-        if let (Some(xkb), Some(key)) = (&mut state.xkb, repeated_key) {
+        if let (Some(xkb), Some(key)) = (&mut state.xkb, repeat_key) {
             xkb.handle_key(key, &state.cli, &mut state.inp);
         }
 

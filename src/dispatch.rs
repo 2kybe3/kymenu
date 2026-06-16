@@ -1,5 +1,3 @@
-use std::time::Instant;
-
 use memmap2::Mmap;
 use wayland_client::{
     Connection, Dispatch, WEnum,
@@ -14,7 +12,7 @@ use xkeysym::KeyCode;
 
 use crate::{
     AppData,
-    appdata::{RepeatConfig, output::Output, xkb::Xkb},
+    appdata::{output::Output, xkb::Xkb},
 };
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
@@ -180,17 +178,13 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 };
 
                 if state != wl_keyboard::KeyState::Pressed {
-                    crate_state.repeat_state = None;
+                    crate_state.repeat.reset_state();
                     return;
                 }
 
                 let key = KeyCode::from(key + 8);
 
-                crate_state.repeat_state = Some(crate::appdata::RepeatState {
-                    key,
-                    started_at: Instant::now(),
-                    last_repeat: Instant::now(),
-                });
+                crate_state.repeat.set_state(key);
 
                 if let Some(xkb) = &mut crate_state.xkb {
                     xkb.handle_key(key, &crate_state.cli, &mut crate_state.inp);
@@ -209,10 +203,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 }
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
-                crate_state.repeat_config = Some(RepeatConfig {
-                    rate: rate as u32,
-                    delay: delay as u32,
-                });
+                crate_state.repeat.set_config(rate as u32, delay as u32);
             }
             _ => {}
         }

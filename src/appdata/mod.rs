@@ -1,36 +1,21 @@
 pub mod buffer;
 pub mod input;
 pub mod output;
+pub mod repeat;
 pub mod wayland_globals;
 pub mod xkb;
-
-use std::time::Instant;
-
-use xkeysym::KeyCode;
 
 use crate::{
     appdata::{
         buffer::Buffer,
         input::{Input, InputItems},
         output::Output,
+        repeat::Repeat,
         wayland_globals::{Registries, WaylandGlobals},
         xkb::Xkb,
     },
     cli::Cli,
 };
-
-#[derive(Debug)]
-pub struct RepeatState {
-    pub key: KeyCode,
-    pub started_at: Instant,
-    pub last_repeat: Instant,
-}
-
-#[derive(Debug)]
-pub struct RepeatConfig {
-    pub rate: u32,
-    pub delay: u32,
-}
 
 #[derive(Debug)]
 pub struct AppData {
@@ -39,8 +24,7 @@ pub struct AppData {
     pub output: Option<Output>,
     pub buffer: Option<Buffer>,
 
-    pub repeat_config: Option<RepeatConfig>,
-    pub repeat_state: Option<RepeatState>,
+    pub repeat: Repeat,
 
     pub xkb: Option<Xkb>,
 
@@ -60,8 +44,7 @@ impl AppData {
             output: None,
             buffer: None,
 
-            repeat_config: None,
-            repeat_state: None,
+            repeat: Repeat::default(),
 
             xkb: None,
 
