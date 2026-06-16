@@ -192,7 +192,9 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                     last_repeat: Instant::now(),
                 });
 
-                crate_state.handle_key(key);
+                if let Some(xkb) = &mut crate_state.xkb {
+                    xkb.handle_key(key, &crate_state.cli, &mut crate_state.inp);
+                }
             }
             wl_keyboard::Event::Modifiers {
                 mods_depressed,

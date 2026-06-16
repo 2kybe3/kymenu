@@ -132,8 +132,8 @@ fn main() -> anyhow::Result<()> {
             }
         }
 
-        if let Some(key) = repeated_key {
-            state.handle_key(key);
+        if let (Some(xkb), Some(key)) = (&mut state.xkb, repeated_key) {
+            xkb.handle_key(key, &state.cli, &mut state.inp);
         }
 
         // rendering
