@@ -7,7 +7,10 @@ mod font;
 use std::time::{Duration, Instant};
 
 use clap::Parser;
-use wayland_client::{Connection, protocol::wl_shm};
+use wayland_client::{
+    Connection,
+    protocol::{wl_buffer::WlBuffer, wl_shm},
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 
 use crate::{
@@ -86,11 +89,11 @@ fn main() -> anyhow::Result<()> {
         event_queue.roundtrip(&mut state)?;
 
         if let Some(output) = state.output.as_ref() {
-            break output;
+            break output.clone();
         }
     };
 
-    state.buffer = Some(Buffer::new(output, &registries.shm, &qh)?);
+    state.buffer = Some(Buffer::new(&output, &registries.shm, &qh)?);
 
     // Start getting keyboard events
     registries.seat.get_keyboard(&qh, ());
@@ -109,22 +112,23 @@ fn main() -> anyhow::Result<()> {
     // seems bloat)
     state.inp.dirty = true;
 
-    let mut frame = 0usize;
-
     loop {
+        // keyboard
         let mut repeated_key = None;
 
-        if let Some(repeat) = state.repeat.as_mut() {
+        if let (Some(config), Some(repeat)) =
+            (state.repeat_config.as_ref(), state.repeat_state.as_mut())
+        {
             let now = Instant::now();
 
-            if now.duration_since(repeat.started_at) >= Duration::from_millis(repeat.delay as u64) {
-                let interval = Duration::from_secs_f64(1.0 / repeat.rate as f64);
+            let delay = Duration::from_millis(config.delay as u64);
+            let interval = Duration::from_secs_f64(1.0 / config.rate as f64);
 
-                if now.duration_since(repeat.last_repeat) >= interval {
-                    repeat.last_repeat = now;
-
-                    repeated_key = repeat.key;
-                }
+            if now.duration_since(repeat.started_at) >= delay
+                && now.duration_since(repeat.last_repeat) >= interval
+            {
+                repeat.last_repeat = now;
+                repeated_key = Some(repeat.key);
             }
         }
 
@@ -132,217 +136,12 @@ fn main() -> anyhow::Result<()> {
             state.handle_key(key);
         }
 
-        if state.configured && state.inp.dirty {
-            let Some(output) = state.output.as_ref() else {
-                tracing::error!("warning somehow got unset. this is an bug!");
-                std::process::exit(1);
-            };
-
-            let Some(state_buffer) = &mut state.buffer else {
-                tracing::error!("state_buffer somehow got unset. this is an bug!");
-                std::process::exit(1);
-            };
-
-            // We swap between 2 buffers because 1 is in use by swayland and should not be used
-            let buffer = state_buffer.get_buffer(frame);
-
-            // Background
-            let bgra = u32::from_le_bytes(state.cli.background_color.get_bgra());
-            let pixels = bytemuck::cast_slice_mut::<u8, u32>(buffer);
-            pixels.fill(bgra);
-
-            // Rendering from left to right
-            let mut index = state.cli.start_margin;
-            {
-                // Prompt
-                let size = font.text_width(&state.cli.prompt, state.cli.font_size);
-
-                font.render_text(
-                    &state.cli.prompt,
-                    state.cli.font_size,
-                    index,
-                    &state.cli.prompt_color,
-                    buffer,
-                    output.height(),
-                    output.width(),
-                );
-
-                index += size;
-            }
-
-            {
-                // Current Input
-                let mut extra = false;
-
-                let mut input = if state.cli.hidden_input {
-                    "*".repeat(state.inp.input().chars().count())
-                } else {
-                    state.inp.input().to_string()
-                };
-
-                let check_width = if state.cli.input {
-                    output.width()
-                } else {
-                    output.width() / 4
-                };
-
-                let mut size = font.text_width(&input, state.cli.font_size);
-                if index + size >= check_width {
-                    let mut truncated = String::new();
-
-                    for c in input.chars() {
-                        let next = format!("{}...", truncated.clone() + &c.to_string());
-                        if font.text_width(&next, state.cli.font_size) + index >= check_width {
-                            extra = true;
-                            break;
-                        }
-                        truncated.push(c);
-                    }
-
-                    input = truncated;
-                    size = font.text_width(&input, state.cli.font_size);
-                }
-
-                font.render_text(
-                    &input,
-                    state.cli.font_size,
-                    index,
-                    &state.cli.input_color,
-                    buffer,
-                    output.height(),
-                    output.width(),
-                );
-
-                index += size;
-
-                if extra {
-                    font.render_text(
-                        "...",
-                        state.cli.font_size,
-                        index,
-                        &state.cli.extra_text_color,
-                        buffer,
-                        output.height(),
-                        output.width(),
-                    );
-
-                    index += font.text_width("...", state.cli.font_size);
-                }
-            }
-
-            if !state.cli.input {
-                if index + state.cli.bin_start_margin < state.cli.default_bin_start {
-                    index = state.cli.default_bin_start;
-                } else {
-                    index += state.cli.bin_start_margin;
-                }
-
-                {
-                    // Start Arrow
-                    let arrow = if state.inp.selected_index() == 0 {
-                        &state.cli.start_arrow
-                    } else {
-                        &state.cli.start_arrow_more
-                    };
-
-                    let size = font.text_width(arrow, state.cli.font_size) + state.cli.arrow_margin;
-
-                    font.render_text(
-                        arrow,
-                        state.cli.font_size,
-                        index,
-                        &state.cli.arrow_color,
-                        buffer,
-                        output.height(),
-                        output.width(),
-                    );
-                    index += size;
-                }
-
-                // Packages
-                let mut all_bins_shown = true;
-
-                let end_arrow_size = font.text_width(&state.cli.end_arrow, state.cli.font_size)
-                    + state.cli.end_margin;
-
-                let end_arrow_size_more = font
-                    .text_width(&state.cli.end_arrow_more, state.cli.font_size)
-                    + state.cli.end_margin;
-
-                for (i, bin) in state
-                    .inp
-                    .filtered_inputs()
-                    .iter()
-                    .enumerate()
-                    .skip(state.inp.selected_index() as usize)
-                {
-                    let last = i == state.inp.filtered_inputs().len() - 1;
-
-                    let size = font.text_width(bin.display(), state.cli.font_size)
-                        + if last {
-                            state.cli.arrow_margin
-                        } else {
-                            state.cli.text_margin
-                        };
-
-                    if (index + size)
-                        > output.width()
-                            - if last {
-                                end_arrow_size
-                            } else {
-                                end_arrow_size_more
-                            }
-                    {
-                        all_bins_shown = false;
-                        break;
-                    }
-
-                    font.render_text(
-                        bin.display(),
-                        state.cli.font_size,
-                        index,
-                        if i == state.inp.selected_index() as usize {
-                            &state.cli.selected_color
-                        } else {
-                            &state.cli.item_color
-                        },
-                        buffer,
-                        output.height(),
-                        output.width(),
-                    );
-
-                    index += size;
-                }
-
-                {
-                    // End Arrow
-                    let arrow = if all_bins_shown {
-                        &state.cli.end_arrow
-                    } else {
-                        &state.cli.end_arrow_more
-                    };
-
-                    let size = font.text_width(arrow, state.cli.font_size) + state.cli.end_margin;
-
-                    font.render_text(
-                        arrow,
-                        state.cli.font_size,
-                        if all_bins_shown {
-                            index
-                        } else {
-                            output.width() - size
-                        },
-                        &state.cli.arrow_color,
-                        buffer,
-                        output.height(),
-                        output.width(),
-                    );
-                }
-            }
-
-            let buffer = state_buffer.get_wl_buffer(frame, output, &qh);
-
-            surface.attach(Some(&buffer), 0, 0);
+        // rendering
+        if state.configured
+            && state.inp.dirty
+            && let Some(wl_buffer) = render(&mut state, &font)
+        {
+            surface.attach(Some(wl_buffer), 0, 0);
             surface.damage(0, 0, output.width() as i32, output.height() as i32);
 
             surface.frame(&qh, ());
@@ -350,12 +149,11 @@ fn main() -> anyhow::Result<()> {
             surface.commit();
 
             state.inp.dirty = false;
-            frame += 1;
         };
 
         event_queue.flush()?;
 
-        // This call will not block, but may return [`None`] if the inner queue of the backend needs to be dispatched.
+        // "This call will not block, but may return [`None`] if the inner queue of the backend needs to be dispatched."
         let prep_read = match conn.prepare_read() {
             Some(v) => v,
             None => {
@@ -368,5 +166,217 @@ fn main() -> anyhow::Result<()> {
         let _ = prep_read.read().ok();
 
         event_queue.dispatch_pending(&mut state)?;
+
+        std::thread::sleep(std::time::Duration::from_millis(1));
     }
+}
+
+fn render<'a>(state: &'a mut AppData, font: &TextRenderer) -> Option<&'a WlBuffer> {
+    let Some(output) = state.output.as_ref() else {
+        tracing::error!("warning somehow got unset. this is an bug!");
+        std::process::exit(1);
+    };
+
+    let Some(state_buffer) = &mut state.buffer else {
+        tracing::error!("state_buffer somehow got unset. this is an bug!");
+        std::process::exit(1);
+    };
+
+    // We swap between 2 buffers because 1 is in use by swayland and should not be used
+    let (wl_buffer, buffer) = state_buffer.acquire_buffer()?;
+
+    // Background
+    let bgra = u32::from_le_bytes(state.cli.background_color.get_bgra());
+    let pixels = bytemuck::cast_slice_mut::<u8, u32>(buffer);
+    pixels.fill(bgra);
+
+    // Rendering from left to right
+    let mut index = state.cli.start_margin;
+    {
+        // Prompt
+        let size = font.text_width(&state.cli.prompt, state.cli.font_size);
+
+        font.render_text(
+            &state.cli.prompt,
+            state.cli.font_size,
+            index,
+            &state.cli.prompt_color,
+            buffer,
+            output.height(),
+            output.width(),
+        );
+
+        index += size;
+    }
+
+    {
+        // Current Input
+        let mut extra = false;
+
+        let mut input = if state.cli.hidden_input {
+            "*".repeat(state.inp.input().chars().count())
+        } else {
+            state.inp.input().to_string()
+        };
+
+        let check_width = if state.cli.input {
+            output.width()
+        } else {
+            output.width() / 4
+        };
+
+        let mut size = font.text_width(&input, state.cli.font_size);
+        if index + size >= check_width {
+            let mut truncated = String::new();
+
+            for c in input.chars() {
+                let next = format!("{}...", truncated.clone() + &c.to_string());
+                if font.text_width(&next, state.cli.font_size) + index >= check_width {
+                    extra = true;
+                    break;
+                }
+                truncated.push(c);
+            }
+
+            input = truncated;
+            size = font.text_width(&input, state.cli.font_size);
+        }
+
+        font.render_text(
+            &input,
+            state.cli.font_size,
+            index,
+            &state.cli.input_color,
+            buffer,
+            output.height(),
+            output.width(),
+        );
+
+        index += size;
+
+        if extra {
+            font.render_text(
+                "...",
+                state.cli.font_size,
+                index,
+                &state.cli.extra_text_color,
+                buffer,
+                output.height(),
+                output.width(),
+            );
+
+            index += font.text_width("...", state.cli.font_size);
+        }
+    }
+
+    if !state.cli.input {
+        if index + state.cli.bin_start_margin < state.cli.default_bin_start {
+            index = state.cli.default_bin_start;
+        } else {
+            index += state.cli.bin_start_margin;
+        }
+
+        {
+            // Start Arrow
+            let arrow = if state.inp.selected_index() == 0 {
+                &state.cli.start_arrow
+            } else {
+                &state.cli.start_arrow_more
+            };
+
+            let size = font.text_width(arrow, state.cli.font_size) + state.cli.arrow_margin;
+
+            font.render_text(
+                arrow,
+                state.cli.font_size,
+                index,
+                &state.cli.arrow_color,
+                buffer,
+                output.height(),
+                output.width(),
+            );
+            index += size;
+        }
+
+        // Packages
+        let mut all_bins_shown = true;
+
+        let end_arrow_size =
+            font.text_width(&state.cli.end_arrow, state.cli.font_size) + state.cli.end_margin;
+
+        let end_arrow_size_more =
+            font.text_width(&state.cli.end_arrow_more, state.cli.font_size) + state.cli.end_margin;
+
+        for (i, bin) in state
+            .inp
+            .filtered_inputs()
+            .iter()
+            .enumerate()
+            .skip(state.inp.selected_index() as usize)
+        {
+            let last = i == state.inp.filtered_inputs().len() - 1;
+
+            let size = font.text_width(bin.display(), state.cli.font_size)
+                + if last {
+                    state.cli.arrow_margin
+                } else {
+                    state.cli.text_margin
+                };
+
+            if (index + size)
+                > output.width()
+                    - if last {
+                        end_arrow_size
+                    } else {
+                        end_arrow_size_more
+                    }
+            {
+                all_bins_shown = false;
+                break;
+            }
+
+            font.render_text(
+                bin.display(),
+                state.cli.font_size,
+                index,
+                if i == state.inp.selected_index() as usize {
+                    &state.cli.selected_color
+                } else {
+                    &state.cli.item_color
+                },
+                buffer,
+                output.height(),
+                output.width(),
+            );
+
+            index += size;
+        }
+
+        {
+            // End Arrow
+            let arrow = if all_bins_shown {
+                &state.cli.end_arrow
+            } else {
+                &state.cli.end_arrow_more
+            };
+
+            let size = font.text_width(arrow, state.cli.font_size) + state.cli.end_margin;
+
+            font.render_text(
+                arrow,
+                state.cli.font_size,
+                if all_bins_shown {
+                    index
+                } else {
+                    output.width() - size
+                },
+                &state.cli.arrow_color,
+                buffer,
+                output.height(),
+                output.width(),
+            );
+        }
+    }
+
+    Some(wl_buffer)
 }

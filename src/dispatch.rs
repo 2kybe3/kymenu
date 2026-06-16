@@ -12,7 +12,10 @@ use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_l
 use xkbcommon::xkb;
 use xkeysym::KeyCode;
 
-use crate::{AppData, appdata::output::Output};
+use crate::{
+    AppData,
+    appdata::{RepeatConfig, output::Output},
+};
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
     fn event(
@@ -67,18 +70,24 @@ impl Dispatch<zwlr_layer_surface_v1::ZwlrLayerSurfaceV1, ()> for AppData {
 impl wayland_client::Dispatch<wl_buffer::WlBuffer, ()> for AppData {
     fn event(
         state: &mut Self,
-        _proxy: &wl_buffer::WlBuffer,
+        proxy: &wl_buffer::WlBuffer,
         event: <wl_buffer::WlBuffer as wayland_client::Proxy>::Event,
         _data: &(),
         _conn: &wayland_client::Connection,
         qhandle: &wayland_client::QueueHandle<Self>,
     ) {
         if let wl_buffer::Event::Release = event
-            && let (Some(buffer), Some(registries)) = (&mut state.buffer, &state.registries)
-            && buffer.has_pending_resize()
-            && let Err(e) = buffer.apply_pending_resize(&registries.shm, qhandle)
+            && let (Some(buffer), Some(output), Some(registries)) =
+                (&mut state.buffer, &state.output, &state.registries)
         {
-            tracing::error!("resizing buffer failed: {e}");
+            buffer.buffer_released(proxy);
+
+            if buffer.has_pending_resize()
+                && buffer.all_buffer_free()
+                && let Err(e) = buffer.apply_pending_resize(output, &registries.shm, qhandle)
+            {
+                tracing::error!("resizing buffer failed: {e}");
+            }
         }
     }
 }
@@ -162,13 +171,6 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 crate_state.xkb = Some(crate::appdata::Xkb(state))
             }
             wl_keyboard::Event::Key { key, state, .. } => {
-                let Some(repeat_state) = &mut crate_state.repeat else {
-                    tracing::warn!(
-                        "received a key event even tho the compositor didn't set the repeat rate yet"
-                    );
-                    return;
-                };
-
                 let state = match state {
                     WEnum::Value(v) => v,
                     WEnum::Unknown(e) => {
@@ -178,15 +180,17 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 };
 
                 if state != wl_keyboard::KeyState::Pressed {
-                    repeat_state.key = None;
+                    crate_state.repeat_state = None;
                     return;
                 }
 
                 let key = KeyCode::from(key + 8);
 
-                repeat_state.key = Some(key);
-                repeat_state.started_at = Instant::now();
-                repeat_state.last_repeat = Instant::now();
+                crate_state.repeat_state = Some(crate::appdata::RepeatState {
+                    key,
+                    started_at: Instant::now(),
+                    last_repeat: Instant::now(),
+                });
 
                 crate_state.handle_key(key);
             }
@@ -203,13 +207,10 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
                 }
             }
             wl_keyboard::Event::RepeatInfo { rate, delay } => {
-                crate_state.repeat = Some(crate::appdata::RepeatState {
-                    key: None,
-                    started_at: Instant::now(),
-                    last_repeat: Instant::now(),
-                    rate,
-                    delay,
-                })
+                crate_state.repeat_config = Some(RepeatConfig {
+                    rate: rate as u32,
+                    delay: delay as u32,
+                });
             }
             _ => {}
         }

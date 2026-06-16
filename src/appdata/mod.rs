@@ -287,11 +287,15 @@ impl std::fmt::Debug for Xkb {
 
 #[derive(Debug)]
 pub struct RepeatState {
-    pub key: Option<KeyCode>,
+    pub key: KeyCode,
     pub started_at: Instant,
     pub last_repeat: Instant,
-    pub rate: i32,
-    pub delay: i32,
+}
+
+#[derive(Debug)]
+pub struct RepeatConfig {
+    pub rate: u32,
+    pub delay: u32,
 }
 
 #[derive(Debug)]
@@ -301,7 +305,9 @@ pub struct AppData {
     pub output: Option<Output>,
     pub buffer: Option<Buffer>,
 
-    pub repeat: Option<RepeatState>,
+    pub repeat_config: Option<RepeatConfig>,
+    pub repeat_state: Option<RepeatState>,
+
     pub xkb: Option<Xkb>,
 
     pub configured: bool,
@@ -320,7 +326,9 @@ impl AppData {
             output: None,
             buffer: None,
 
-            repeat: None,
+            repeat_config: None,
+            repeat_state: None,
+
             xkb: None,
 
             configured: false,

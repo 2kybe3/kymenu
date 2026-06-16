@@ -16,21 +16,58 @@ pub struct Buffer {
     pool: WlShmPool,
     current_size: usize,
     pending_resize: Option<Output>,
+    main_buffer: BufferObject,
+    secondary_buffer: BufferObject,
+}
+
+#[derive(Debug)]
+pub struct BufferObject {
+    buffer: WlBuffer,
+    used: bool,
+}
+impl BufferObject {
+    pub fn new(buffer: WlBuffer) -> Self {
+        Self {
+            buffer,
+            used: false,
+        }
+    }
 }
 
 impl Buffer {
     pub fn new(output: &Output, shm: &WlShm, qh: &QueueHandle<AppData>) -> anyhow::Result<Self> {
-        let size = output.get_buffer_size() * 2;
+        let size = output.get_buffer_size();
+        let pool_size = size * 2;
 
         let memfd = memfd::MemfdOptions::default().create("kymenu_pool")?;
-        memfd.as_file().set_len(size as u64)?;
+        memfd.as_file().set_len(pool_size as u64)?;
 
         let pool = shm.create_pool(
             unsafe { BorrowedFd::borrow_raw(memfd.as_raw_fd()) },
-            size as i32,
+            pool_size as i32,
             qh,
             (),
         );
+
+        let main_buffer = BufferObject::new(pool.create_buffer(
+            0,
+            output.width() as i32,
+            output.height() as i32,
+            (output.width() * crate::COLOR_SIZE) as i32,
+            crate::COLOR_FORMAT,
+            qh,
+            (),
+        ));
+
+        let secondary_buffer = BufferObject::new(pool.create_buffer(
+            size as i32,
+            output.width() as i32,
+            output.height() as i32,
+            (output.width() * crate::COLOR_SIZE) as i32,
+            crate::COLOR_FORMAT,
+            qh,
+            (),
+        ));
 
         let mmap = unsafe { Mmap::map(memfd.as_raw_fd())?.make_mut()? };
 
@@ -40,11 +77,14 @@ impl Buffer {
             pool,
             current_size: output.get_buffer_size() as usize,
             pending_resize: None,
+            main_buffer,
+            secondary_buffer,
         })
     }
 
     pub fn apply_pending_resize(
         &mut self,
+        output: &Output,
         shm: &WlShm,
         qh: &QueueHandle<AppData>,
     ) -> anyhow::Result<()> {
@@ -52,7 +92,7 @@ impl Buffer {
             return Ok(());
         };
 
-        let size = pending_resize.get_buffer_size() * 2;
+        let size = pending_resize.get_buffer_size();
         let pool_size = size * 2;
 
         self.memfd.as_file().set_len(pool_size as u64)?;
@@ -65,6 +105,26 @@ impl Buffer {
             qh,
             (),
         );
+
+        self.main_buffer = BufferObject::new(self.pool.create_buffer(
+            0,
+            output.width() as i32,
+            output.height() as i32,
+            (output.width() * crate::COLOR_SIZE) as i32,
+            crate::COLOR_FORMAT,
+            qh,
+            (),
+        ));
+
+        self.secondary_buffer = BufferObject::new(self.pool.create_buffer(
+            size as i32,
+            output.width() as i32,
+            output.height() as i32,
+            (output.width() * crate::COLOR_SIZE) as i32,
+            crate::COLOR_FORMAT,
+            qh,
+            (),
+        ));
 
         self.current_size = size as usize;
         Ok(())
@@ -80,27 +140,37 @@ impl Buffer {
         }
     }
 
-    pub fn get_buffer(&mut self, frame: usize) -> &mut [u8] {
-        let offset = (frame % 2) * self.current_size;
-        &mut self.mmap[offset..offset + self.current_size]
+    pub fn all_buffer_free(&self) -> bool {
+        !self.main_buffer.used && !self.secondary_buffer.used
     }
 
-    pub fn get_wl_buffer(
-        &mut self,
-        frame: usize,
-        output: &Output,
-        qh: &QueueHandle<AppData>,
-    ) -> WlBuffer {
-        let offset = (frame % 2) * self.current_size;
+    pub fn acquire_buffer(&mut self) -> Option<(&WlBuffer, &mut [u8])> {
+        if !self.main_buffer.used {
+            self.main_buffer.used = true;
+            return Some((
+                &self.main_buffer.buffer,
+                &mut self.mmap[..self.current_size],
+            ));
+        }
 
-        self.pool.create_buffer(
-            offset as i32,
-            output.width() as i32,
-            output.height() as i32,
-            (output.width() * crate::COLOR_SIZE) as i32,
-            crate::COLOR_FORMAT,
-            qh,
-            (),
-        )
+        if !self.secondary_buffer.used {
+            self.secondary_buffer.used = true;
+            return Some((
+                &self.secondary_buffer.buffer,
+                &mut self.mmap[self.current_size..self.current_size * 2],
+            ));
+        }
+
+        None
+    }
+
+    pub fn buffer_released(&mut self, buffer: &WlBuffer) {
+        if self.main_buffer.buffer == *buffer {
+            self.main_buffer.used = false;
+        }
+
+        if self.secondary_buffer.buffer == *buffer {
+            self.secondary_buffer.used = false;
+        }
     }
 }
