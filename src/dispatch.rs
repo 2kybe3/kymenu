@@ -14,7 +14,7 @@ use xkeysym::KeyCode;
 
 use crate::{
     AppData,
-    appdata::{RepeatConfig, output::Output},
+    appdata::{RepeatConfig, output::Output, xkb::Xkb},
 };
 
 impl Dispatch<wl_registry::WlRegistry, ()> for AppData {
@@ -168,7 +168,7 @@ impl Dispatch<wl_keyboard::WlKeyboard, ()> for AppData {
 
                 let state = xkb::State::new(&keymap);
 
-                crate_state.xkb = Some(crate::appdata::Xkb(state))
+                crate_state.xkb = Some(Xkb(state))
             }
             wl_keyboard::Event::Key { key, state, .. } => {
                 let state = match state {
