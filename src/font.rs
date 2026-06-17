@@ -1,7 +1,6 @@
 use std::{fs::OpenOptions, io::Read, path::Path};
 
 use ab_glyph::{Font, FontVec, PxScale, PxScaleFont, ScaleFont};
-use fontconfig::Fontconfig;
 use thiserror::Error;
 
 use crate::color;
@@ -21,6 +20,7 @@ pub enum FontError {
     FontNotFound {
         family: String,
         style: Option<String>,
+        error: fontconfig::FontconfigError,
     },
     #[error("failed to initialize fontconfig")]
     FontConfigInitError(),
@@ -72,11 +72,14 @@ impl TextFont {
     }
 
     fn load_font(family: &str, style: Option<&str>) -> Result<Self, FontError> {
-        let fc = Fontconfig::new().ok_or(FontError::FontConfigInitError())?;
-        let font = fc.find(family, style).ok_or(FontError::FontNotFound {
-            family: family.to_string(),
-            style: style.map(|style| style.to_string()),
-        })?;
+        let fc = fontconfig::Fontconfig::new().ok_or(FontError::FontConfigInitError())?;
+        let font = fc
+            .find(family, style)
+            .map_err(|error| FontError::FontNotFound {
+                family: family.to_string(),
+                style: style.map(|style| style.to_string()),
+                error,
+            })?;
         Self::from_path(font.path.as_path())
     }
 
