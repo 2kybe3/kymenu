@@ -1,21 +1,39 @@
 use std::{fs::OpenOptions, io::Read, path::Path};
 
 use ab_glyph::{Font, FontVec, PxScale, PxScaleFont, ScaleFont};
-use anyhow::Context;
 use fontconfig::Fontconfig;
+use thiserror::Error;
 
 use crate::color;
+
+#[derive(Debug, Error)]
+pub enum FontError {
+    #[error("failed to open font file '{0}': {1}")]
+    OpenFontFile(std::path::PathBuf, std::io::Error),
+    #[error("failed to read font file '{0}': {1}")]
+    ReadFontFile(std::path::PathBuf, std::io::Error),
+    #[error("failed to parse font file '{}': {error}",  path.as_ref().map(|p| p.display().to_string()).unwrap_or("".to_string()))]
+    ParseFont {
+        path: Option<std::path::PathBuf>,
+        error: ab_glyph::InvalidFont,
+    },
+    #[error("failed to find font matching (family: {family}, style {})", style.as_ref().unwrap_or(&"any".to_string()))]
+    FontNotFound {
+        family: String,
+        style: Option<String>,
+    },
+    #[error("failed to initialize fontconfig")]
+    FontConfigInitError(),
+}
 
 pub struct TextFont(pub FontVec);
 
 impl TextFont {
     pub fn new(family: &str, style: Option<&str>) -> Self {
         match Self::load_font(family, style) {
-            Ok(v) => v,
             Err(e) => {
-                tracing::warn!(
-                    "failed to load font (family: '{family}', style: '{style:?}'): {e}\nusing fallback font"
-                );
+                tracing::warn!("failed to load font (family: '{family}', style: '{style:?}'): {e}");
+                tracing::info!("using fallback font");
                 match Self::new_fallback_font() {
                     Ok(v) => v,
                     Err(e) => {
@@ -24,35 +42,41 @@ impl TextFont {
                     }
                 }
             }
+            Ok(v) => v,
         }
     }
 
-    fn from_path(path: &Path) -> anyhow::Result<Self> {
+    fn from_path(path: &Path) -> Result<Self, FontError> {
         let mut file = OpenOptions::new()
             .read(true)
             .open(path)
-            .context(format!("failed to open font file '{}'", path.display()))?;
+            .map_err(|e| FontError::OpenFontFile(path.to_path_buf(), e))?;
 
         let mut buffer = Vec::new();
         file.read_to_end(&mut buffer)
-            .context(format!("failed to read font file '{}'", path.display()))?;
+            .map_err(|e| FontError::ReadFontFile(path.to_path_buf(), e))?;
 
-        let font = FontVec::try_from_vec(buffer)
-            .context(format!("failed to parse font file '{}'", path.display()))?;
+        let font = FontVec::try_from_vec(buffer).map_err(|error| FontError::ParseFont {
+            path: Some(path.to_path_buf()),
+            error,
+        })?;
 
         Ok(Self(font))
     }
 
-    fn new_fallback_font() -> anyhow::Result<Self> {
+    fn new_fallback_font() -> Result<Self, FontError> {
         let font =
             FontVec::try_from_vec(include_bytes!("../assets/font/FiraCode-Regular.ttf").to_vec())
-                .context("failed to parse fallback font file")?;
+                .map_err(|error| FontError::ParseFont { path: None, error })?;
         Ok(Self(font))
     }
 
-    fn load_font(family: &str, style: Option<&str>) -> anyhow::Result<Self> {
-        let fc = Fontconfig::new().context("failed to create Fontconfig instance")?;
-        let font = fc.find(family, style).context("font not found")?;
+    fn load_font(family: &str, style: Option<&str>) -> Result<Self, FontError> {
+        let fc = Fontconfig::new().ok_or(FontError::FontConfigInitError())?;
+        let font = fc.find(family, style).ok_or(FontError::FontNotFound {
+            family: family.to_string(),
+            style: style.map(|style| style.to_string()),
+        })?;
         Self::from_path(font.path.as_path())
     }
 
