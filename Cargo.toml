@@ -9,7 +9,7 @@ ab_glyph = "0.2.32"
 anyhow = "1.0.102"
 bytemuck = "1.25.0"
 clap = { version = "4.6.1", features = ["derive"] }
-fontconfig = "0.10.2"
+fontconfig = "0.11.0"
 memfd = "0.6.5"
 memmap2 = "0.9.10"
 serde = { version = "1.0.228", features = ["derive"] }
