@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
   lint-and-build:
@@ -22,7 +23,7 @@ jobs:
           attic login main https://attic.kybe.xyz/main ${{ secrets.ATTIC_KEY }}
           attic use main
 
-      - name: Build & Checks
+      - name: Build & Lint
         run: |
           nix flake check . -L --no-update-lock-file --accept-flake-config
 
