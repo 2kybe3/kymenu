@@ -17,16 +17,31 @@ jobs:
       - uses: https://github.com/cachix/install-nix-action@bb0495a1086c46893eee56f32fd192dfe4a15bb9 # v32.0.0
 
       - name: Setup Attic
+        env:
+          ATTIC_TOKEN: ${{ secrets.ATTIC_KEY }}
+          ATTIC_ENDPOINT: ${{ vars.ATTIC_ENDPOINT }}
+          ATTIC_STORE: ${{ vars.ATTIC_STORE }}
         id: attic
         run: |
-          nix profile add "nixpkgs#attic-client"
-          attic login main https://attic.kybe.xyz/main ${{ secrets.ATTIC_KEY }}
-          attic use main
+          nix shell nixpkgs#attic-client \
+            --option "extra-substituters" "$ATTIC_ENDPOINT" \
+            --option "extra-trusted-public-keys" "$ATTIC_KEY" \
+            --command sh -c '
+              attic login "$ATTIC_STORE" "$ATTIC_ENDPOINT" "$ATTIC_TOKEN" && attic use "$ATTIC_STORE"
+            '
 
       - name: Build & Lint
         run: |
           nix flake check . -L --no-update-lock-file --accept-flake-config
 
       - name: Push to Attic
-        if: ${{ steps.attic.conclusion == 'success' }}
-        run: attic push main --ignore-upstream-cache-filter -j 64 $(ls -d /nix/store/*/)
+        if: always()
+        env:
+          ATTIC_STORE: ${{ vars.ATTIC_STORE }}
+        run: |
+          nix shell nixpkgs#attic-client \
+            --option "extra-substituters" "$ATTIC_ENDPOINT" \
+            --option "extra-trusted-public-keys" "$ATTIC_KEY" \
+            --command sh -c '
+              attic push "$ATTIC_STORE" --ignore-upstream-cache-filter -j 64 $(ls -d /nix/store/*/)
+            '
